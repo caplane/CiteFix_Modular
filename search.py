@@ -1,4 +1,3 @@
-
 """
 The Search Router (search.py)
 Acts as the 'Traffic Cop'.
@@ -59,5 +58,3 @@ def search_citation(text, style='chicago'):
         })
     
     return results
-Se
-
