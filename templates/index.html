@@ -1,22 +1,30 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CiteFix Pro - Modular Edition</title>
+    <title>CiteFix Pro - Modular Workbench</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .serif { font-family: 'Merriweather', serif; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
         .loader {
             border: 3px solid #f3f3f3;
             border-radius: 50%;
-            border-top: 3px solid #3b82f6;
+            border-top: 3px solid #2563eb;
             width: 20px;
             height: 20px;
-            -webkit-animation: spin 1s linear infinite; /* Safari */
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -25,84 +33,167 @@
 <body class="h-screen flex flex-col overflow-hidden">
 
     <!-- Header -->
-    <header class="bg-white border-b border-gray-200 shadow-sm z-10">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="bg-blue-600 text-white p-2 rounded-lg">
-                    <i class="fas fa-book-medical text-xl"></i>
-                </div>
-                <h1 class="text-xl font-semibold text-gray-900">CiteFix <span class="text-blue-600">Pro</span></h1>
-                <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full border border-green-200">Modular v2.0</span>
+    <header class="bg-white border-b border-gray-200 shadow-sm z-20 px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <div class="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-lg shadow-sm">
+                <i class="fas fa-paragraph text-lg"></i>
             </div>
-            <button onclick="resetSession()" class="text-gray-500 hover:text-red-600 text-sm font-medium transition-colors">
-                <i class="fas fa-trash-alt mr-1"></i> Reset Session
+            <div>
+                <h1 class="text-xl font-bold text-gray-900 tracking-tight">CiteFix <span class="text-blue-600">Pro</span></h1>
+                <p class="text-xs text-gray-500 font-medium">Modular Remediation Engine v2.1</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <button onclick="toggleAbout()" class="text-gray-600 hover:text-blue-600 font-medium text-sm px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fas fa-info-circle mr-1"></i> How it Works
+            </button>
+            <div class="h-6 w-px bg-gray-300 mx-1"></div>
+            <button onclick="resetSession()" class="text-red-600 hover:text-red-700 font-medium text-sm px-3 py-2 rounded-lg hover:bg-red-50 transition-colors">
+                <i class="fas fa-trash-alt mr-1"></i> Reset Project
             </button>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="flex-1 overflow-hidden flex">
-        <div class="max-w-7xl mx-auto w-full p-6 flex gap-6 h-full">
-            
-            <!-- Left Panel: Upload & Stats -->
-            <div class="w-1/3 flex flex-col gap-6">
-                <!-- Upload Card -->
-                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <h2 class="text-lg font-medium text-gray-900 mb-4">Document Upload</h2>
-                    <div id="upload-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer bg-gray-50">
-                        <input type="file" id="file-input" class="hidden" accept=".docx">
-                        <div id="upload-prompt">
-                            <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-3"></i>
-                            <p class="text-sm text-gray-600 font-medium">Click to upload .docx</p>
-                            <p class="text-xs text-gray-400 mt-1">Word Documents only</p>
-                        </div>
-                        <div id="upload-loading" class="hidden">
-                            <div class="loader mx-auto mb-3"></div>
-                            <p class="text-sm text-gray-600">Analyzing citations...</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Download Card (Hidden initially) -->
-                <div id="download-card" class="hidden bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <h2 class="text-lg font-medium text-gray-900 mb-2">Ready to Export</h2>
-                    <p class="text-sm text-gray-500 mb-4">All resolved citations have been applied.</p>
-                    <a href="/download" class="block w-full bg-green-600 hover:bg-green-700 text-white text-center font-medium py-2 px-4 rounded-lg transition-colors shadow-sm">
-                        <i class="fas fa-file-download mr-2"></i> Download Fixed Document
-                    </a>
-                </div>
-            </div>
-
-            <!-- Right Panel: Citation Workbench -->
-            <div class="w-2/3 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
-                <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                    <h2 class="text-lg font-medium text-gray-900">Citation Workbench</h2>
-                    <span id="count-badge" class="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-full">0 Citations</span>
-                </div>
+    <!-- Main Application Layout -->
+    <main class="flex-1 flex overflow-hidden">
+        
+        <!-- Sidebar: Controls & Status -->
+        <aside class="w-80 bg-white border-r border-gray-200 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+            <div class="p-6 border-b border-gray-100">
+                <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Project Status</h2>
                 
-                <div id="citation-list" class="flex-1 overflow-y-auto p-6 space-y-4">
-                    <!-- State: Empty -->
-                    <div id="empty-state" class="text-center py-20">
-                        <div class="bg-gray-100 rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4">
-                            <i class="fas fa-quote-right text-gray-400 text-2xl"></i>
-                        </div>
-                        <h3 class="text-gray-900 font-medium">No document loaded</h3>
-                        <p class="text-gray-500 text-sm mt-1">Upload a document to start resolving citations.</p>
+                <!-- Status Card -->
+                <div class="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-blue-800 font-semibold text-sm">Active Document</span>
+                        <i class="fas fa-file-word text-blue-400"></i>
                     </div>
+                    <p id="filename-display" class="text-gray-900 font-medium truncate">No file loaded</p>
+                    <p id="status-display" class="text-xs text-blue-600 mt-1">Waiting for upload...</p>
                 </div>
             </div>
-        </div>
+
+            <!-- Upload / Action Area -->
+            <div class="p-6 flex-1 flex flex-col gap-4">
+                <!-- Upload Zone -->
+                <div id="upload-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group h-40 flex flex-col justify-center items-center">
+                    <input type="file" id="file-input" class="hidden" accept=".docx">
+                    <div id="upload-content">
+                        <div class="w-12 h-12 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                            <i class="fas fa-cloud-upload-alt text-xl"></i>
+                        </div>
+                        <p class="text-sm font-medium text-gray-700">Click to Upload .docx</p>
+                        <p class="text-xs text-gray-400 mt-1">Word Documents Only</p>
+                    </div>
+                    <!-- Loader -->
+                    <div id="upload-loading" class="hidden">
+                        <div class="loader mx-auto mb-3"></div>
+                        <p class="text-xs text-gray-500 font-medium">Parsing XML Structure...</p>
+                    </div>
+                </div>
+
+                <!-- Stats Grid (Hidden initially) -->
+                <div id="stats-grid" class="hidden grid grid-cols-2 gap-3">
+                    <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <span class="text-2xl font-bold text-gray-800 block" id="total-citations">0</span>
+                        <span class="text-[10px] uppercase font-bold text-gray-400">Total Citations</span>
+                    </div>
+                    <div class="bg-green-50 p-3 rounded-lg border border-green-100">
+                        <span class="text-2xl font-bold text-green-700 block" id="resolved-count">0</span>
+                        <span class="text-[10px] uppercase font-bold text-green-600">Resolved</span>
+                    </div>
+                </div>
+
+                <div class="flex-1"></div> <!-- Spacer -->
+
+                <!-- Download Button (Hidden) -->
+                <a id="download-btn" href="/download" class="hidden w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-3 px-4 rounded-xl transition-all shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
+                    <i class="fas fa-file-export"></i> Export Document
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <section class="flex-1 bg-gray-50/50 flex flex-col relative">
+            <!-- Toolbar -->
+            <div class="h-14 border-b border-gray-200 bg-white px-6 flex items-center justify-between sticky top-0 z-10">
+                <div class="flex items-center gap-2 text-sm text-gray-600">
+                    <span class="font-medium">Review Mode</span>
+                    <span class="text-gray-300">|</span>
+                    <span id="citation-counter" class="bg-gray-100 px-2 py-0.5 rounded text-xs">0 Items</span>
+                </div>
+                <!-- Future: Filter buttons could go here -->
+            </div>
+
+            <!-- Scrollable List -->
+            <div id="citation-list" class="flex-1 overflow-y-auto p-8 space-y-6 pb-20">
+                <!-- Empty State -->
+                <div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-400">
+                    <i class="fas fa-layer-group text-5xl mb-4 opacity-20"></i>
+                    <p class="text-sm font-medium">Upload a document to begin remediation.</p>
+                </div>
+            </div>
+        </section>
     </main>
 
-    <!-- Scripts -->
+    <!-- About Modal -->
+    <div id="about-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl m-4 p-8 relative">
+            <button onclick="toggleAbout()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            
+            <div class="flex items-center gap-3 mb-6">
+                <div class="bg-blue-100 p-3 rounded-full text-blue-600">
+                    <i class="fas fa-lightbulb text-xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900">About CiteFix Pro</h2>
+            </div>
+
+            <div class="prose prose-sm text-gray-600 space-y-4">
+                <p>CiteFix Pro is a <strong>deterministic document remediation engine</strong> designed for academic and legal workflows.</p>
+                
+                <div class="grid grid-cols-2 gap-4 my-6">
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <h3 class="font-bold text-gray-900 mb-2"><i class="fas fa-random text-blue-500 mr-2"></i>The Router</h3>
+                        <p class="text-xs">Detects mixed content (URLs, Books, Legal Cases) within a single footnote and splits them for processing.</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <h3 class="font-bold text-gray-900 mb-2"><i class="fas fa-university text-purple-500 mr-2"></i>Gov Engine</h3>
+                        <p class="text-xs">Deterministic mapping of over 50 federal agencies to generate authoritative citations from raw URLs.</p>
+                    </div>
+                </div>
+
+                <p>Unlike generative AI, CiteFix does not "guess." It uses strict heuristic rules to identify sources and reformat them into <strong>Chicago Manual of Style (17th Ed.)</strong>, preserving document structure and active hyperlinks.</p>
+            </div>
+            
+            <div class="mt-8 text-right">
+                <button onclick="toggleAbout()" class="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
     <script>
+        // === STATE ===
+        let citations = [];
+        let resolvedCount = 0;
+
         // === UI ELEMENTS ===
         const uploadZone = document.getElementById('upload-zone');
         const fileInput = document.getElementById('file-input');
         const citationList = document.getElementById('citation-list');
         const emptyState = document.getElementById('empty-state');
-        const downloadCard = document.getElementById('download-card');
-        const countBadge = document.getElementById('count-badge');
+        const downloadBtn = document.getElementById('download-btn');
+        const filenameDisplay = document.getElementById('filename-display');
+        const statusDisplay = document.getElementById('status-display');
+        const statsGrid = document.getElementById('stats-grid');
+        const aboutModal = document.getElementById('about-modal');
+
+        // === INITIALIZATION ===
+        // Auto-show about modal on first visit (mock logic)
+        // setTimeout(() => toggleAbout(), 500);
 
         // === EVENT LISTENERS ===
         uploadZone.addEventListener('click', () => fileInput.click());
@@ -110,78 +201,130 @@
         fileInput.addEventListener('change', async (e) => {
             if (e.target.files.length === 0) return;
             
-            // UI Loading State
-            document.getElementById('upload-prompt').classList.add('hidden');
+            // Loading State
+            document.getElementById('upload-content').classList.add('hidden');
             document.getElementById('upload-loading').classList.remove('hidden');
+            uploadZone.classList.add('pointer-events-none', 'opacity-50');
+            
+            const file = e.target.files[0];
+            filenameDisplay.innerText = file.name;
+            statusDisplay.innerText = "Uploading & Parsing...";
             
             const formData = new FormData();
-            formData.append('file', e.target.files[0]);
+            formData.append('file', file);
             
             try {
                 const response = await fetch('/upload', { method: 'POST', body: formData });
                 const data = await response.json();
                 
                 if (data.success) {
-                    renderCitations(data.endnotes);
-                    downloadCard.classList.remove('hidden');
+                    statusDisplay.innerText = "Analysis Complete";
+                    citations = data.endnotes;
+                    renderWorkbench(citations);
+                    
+                    // Show stats
+                    statsGrid.classList.remove('hidden');
+                    document.getElementById('total-citations').innerText = citations.length;
+                    downloadBtn.classList.remove('hidden');
                 } else {
                     alert('Error: ' + data.error);
+                    resetUI();
                 }
             } catch (err) {
-                alert('Upload failed');
                 console.error(err);
+                alert('Upload failed');
+                resetUI();
             } finally {
-                // Reset UI
-                document.getElementById('upload-prompt').classList.remove('hidden');
+                // Reset Upload Zone visual but keep file loaded text
+                document.getElementById('upload-content').classList.remove('hidden');
                 document.getElementById('upload-loading').classList.add('hidden');
+                uploadZone.classList.remove('pointer-events-none', 'opacity-50');
             }
         });
 
-        // === RENDER LOGIC ===
-        function renderCitations(endnotes) {
+        // === CORE UI LOGIC ===
+        function toggleAbout() {
+            aboutModal.classList.toggle('hidden');
+        }
+
+        function renderWorkbench(notes) {
             citationList.innerHTML = '';
-            if (endnotes.length === 0) {
-                citationList.innerHTML = '<div class="text-center text-gray-500">No citations found.</div>';
+            
+            if (notes.length === 0) {
+                citationList.innerHTML = `
+                    <div class="text-center py-10">
+                        <p class="text-gray-500">No citations found in this document.</p>
+                    </div>
+                `;
                 return;
             }
 
-            countBadge.innerText = `${endnotes.length} Citations`;
-
-            endnotes.forEach(note => {
+            notes.forEach(note => {
                 const card = document.createElement('div');
-                card.className = 'border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow bg-white';
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-3">
-                        <span class="bg-blue-50 text-blue-700 text-xs font-mono px-2 py-1 rounded">Endnote ${note.id}</span>
-                        <span id="status-${note.id}" class="text-xs text-gray-400 flex items-center gap-1">
-                            <i class="fas fa-circle text-[8px]"></i> Pending
-                        </span>
-                    </div>
-                    <p class="text-gray-600 text-sm mb-4 font-serif italic border-l-2 border-gray-200 pl-3">${note.text}</p>
-                    
-                    <div class="flex gap-2">
-                        <button onclick="resolveCitation('${note.id}', '${note.text.replace(/'/g, "\\'")}')" 
-                                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 rounded-md transition-colors flex items-center justify-center gap-2">
-                            <i class="fas fa-magic"></i> Auto-Resolve
+                card.id = `card-${note.id}`;
+                card.className = 'bg-white border border-gray-200 rounded-xl shadow-sm p-0 overflow-hidden transition-all hover:shadow-md group';
+                
+                // Card Header
+                const header = `
+                    <div class="bg-gray-50 px-5 py-3 border-b border-gray-100 flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <span class="bg-white border border-gray-200 text-gray-500 text-[10px] font-mono px-2 py-1 rounded uppercase tracking-wider">ID: ${note.id}</span>
+                            <span id="badge-${note.id}" class="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Pending</span>
+                        </div>
+                        <button onclick="toggleEdit('${note.id}')" class="text-gray-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100" title="Manual Edit">
+                            <i class="fas fa-pencil-alt"></i>
                         </button>
                     </div>
-                    <div id="result-${note.id}" class="mt-3 hidden"></div>
                 `;
+
+                // Card Body
+                const body = `
+                    <div class="p-5">
+                        <!-- Original Text -->
+                        <div class="mb-4">
+                            <p class="text-xs font-bold text-gray-400 uppercase mb-1">Original Source Text</p>
+                            <div class="p-3 bg-gray-50 border border-gray-100 rounded-lg text-gray-700 font-serif text-sm leading-relaxed italic">
+                                "${note.text}"
+                            </div>
+                        </div>
+
+                        <!-- Result Container (Hidden initially) -->
+                        <div id="result-${note.id}" class="hidden"></div>
+
+                        <!-- Action Bar -->
+                        <div id="actions-${note.id}" class="mt-4 flex gap-3">
+                            <button onclick="resolveCitation('${note.id}', '${note.text.replace(/'/g, "\\'")}')" 
+                                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm">
+                                <i class="fas fa-magic"></i> Auto-Resolve
+                            </button>
+                            <!-- Future: Manual Edit Button implementation -->
+                        </div>
+                    </div>
+                `;
+
+                card.innerHTML = header + body;
                 citationList.appendChild(card);
             });
         }
 
-        // === CORE LOGIC: RESOLVE CITATION ===
+        // === LOGIC: AUTO RESOLVE ===
         async function resolveCitation(id, text) {
             const resultDiv = document.getElementById(`result-${id}`);
-            const statusSpan = document.getElementById(`status-${id}`);
+            const actionDiv = document.getElementById(`actions-${id}`);
+            const badge = document.getElementById(`badge-${id}`);
             
             // UI Loading
             resultDiv.classList.remove('hidden');
-            resultDiv.innerHTML = '<div class="text-xs text-gray-500 animate-pulse">Consulting engines (Gov, Books)...</div>';
+            resultDiv.innerHTML = `
+                <div class="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <div class="loader"></div>
+                    <span class="text-sm text-blue-700 font-medium">Router is analyzing sources...</span>
+                </div>
+            `;
+            actionDiv.classList.add('hidden'); // Hide button while processing
 
             try {
-                // 1. Search (Router decides engine)
+                // Step 1: Search Router
                 const searchRes = await fetch('/search', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -190,9 +333,9 @@
                 const searchData = await searchRes.json();
 
                 if (searchData.results && searchData.results.length > 0) {
-                    const bestMatch = searchData.results[0]; // Take top result
+                    const bestMatch = searchData.results[0];
                     
-                    // 2. Update Document
+                    // Step 2: Commit to Document
                     const updateRes = await fetch('/update', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
@@ -201,36 +344,62 @@
                     const updateData = await updateRes.json();
 
                     if (updateData.success) {
-                        // Success UI
-                        statusSpan.className = 'text-xs text-green-600 flex items-center gap-1 font-medium';
-                        statusSpan.innerHTML = '<i class="fas fa-check-circle"></i> Resolved';
+                        // Success State
+                        badge.className = 'bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider';
+                        badge.innerText = 'Resolved';
                         
+                        // Update Counters
+                        resolvedCount++;
+                        document.getElementById('resolved-count').innerText = resolvedCount;
+
+                        // Show Result
                         resultDiv.innerHTML = `
-                            <div class="bg-green-50 border border-green-100 rounded p-3 mt-2">
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-xs font-bold text-green-800 uppercase">${bestMatch.source}</span>
-                                    <i class="fas fa-check text-green-600"></i>
+                            <div class="animate-fade-in-up">
+                                <p class="text-xs font-bold text-gray-400 uppercase mb-1">Formatted Output (Chicago Style)</p>
+                                <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="bg-white border border-green-200 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase shadow-sm">
+                                            ${bestMatch.source}
+                                        </span>
+                                    </div>
+                                    <p class="text-gray-800 font-serif text-sm leading-relaxed">
+                                        ${bestMatch.formatted}
+                                    </p>
                                 </div>
-                                <p class="text-sm text-gray-800 font-serif">${bestMatch.formatted}</p>
                             </div>
                         `;
                     }
                 } else {
-                    resultDiv.innerHTML = '<div class="text-xs text-red-500">No match found in available engines.</div>';
+                    // No Match State
+                    resultDiv.innerHTML = `<div class="text-sm text-red-500 bg-red-50 p-3 rounded border border-red-100">No confident match found.</div>`;
+                    actionDiv.classList.remove('hidden'); // Show button again
                 }
             } catch (err) {
                 console.error(err);
-                resultDiv.innerHTML = '<div class="text-xs text-red-500">System error.</div>';
+                resultDiv.innerHTML = `<div class="text-sm text-red-500">System Error</div>`;
+                actionDiv.classList.remove('hidden');
             }
         }
 
         async function resetSession() {
-            if(confirm('Clear all data and start over?')) {
+            if(confirm('Are you sure? This will clear the current document.')) {
                 await fetch('/reset', {method: 'POST'});
                 window.location.reload();
             }
         }
+
+        function resetUI() {
+            filenameDisplay.innerText = "No file loaded";
+            statusDisplay.innerText = "Waiting for upload...";
+            citationList.innerHTML = `
+                <div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-400">
+                    <i class="fas fa-layer-group text-5xl mb-4 opacity-20"></i>
+                    <p class="text-sm font-medium">Upload a document to begin remediation.</p>
+                </div>
+            `;
+            statsGrid.classList.add('hidden');
+            downloadBtn.classList.add('hidden');
+        }
     </script>
 </body>
 </html>
-
