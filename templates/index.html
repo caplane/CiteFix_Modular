@@ -40,7 +40,7 @@
             </div>
             <div>
                 <h1 class="text-xl font-bold text-gray-900 tracking-tight">CiteFix <span class="text-blue-600">Pro</span></h1>
-                <p class="text-xs text-gray-500 font-medium">Modular Remediation Engine v2.4</p>
+                <p class="text-xs text-gray-500 font-medium">Modular Remediation Engine v2.5</p>
             </div>
         </div>
         
@@ -249,16 +249,21 @@
             document.getElementById('final-edit-area').value = note.text; // Default to original
             
             // Clear candidates and search
+            searchCandidates(note.text);
+        }
+
+        async function searchCandidates(text) {
+            // Force Visual Feedback (Loader) immediately
             document.getElementById('candidates-list').innerHTML = `
                 <div class="flex justify-center py-8">
                     <div class="loader"></div>
                 </div>
             `;
-            searchCandidates(note.text);
-        }
 
-        async function searchCandidates(text) {
             try {
+                // Add a slight delay (300ms) to ensure visual feedback is perceived
+                await new Promise(r => setTimeout(r, 300));
+
                 const res = await fetch('/search', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
