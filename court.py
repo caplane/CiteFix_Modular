@@ -8,6 +8,7 @@ class CourtListenerAPI:
     @staticmethod
     def search(query):
         if not query: return None
+        # Add 'case_name' priority to query
         params = {'q': query, 'type': 'o', 'order_by': 'score desc', 'format': 'json'}
         try:
             response = requests.get(CourtListenerAPI.BASE_URL, params=params, timeout=5)
@@ -19,21 +20,21 @@ class CourtListenerAPI:
 
 def is_legal_citation(text):
     """
-    Check for ' v. ', ' v ', or legal URLs.
+    Check for ' v. ', ' v ', ' vs ', ' vs. ' or legal URLs.
     """
     if not text: return False
     clean = text.strip()
     
     # 1. Check URLs
     if 'http' in clean:
-        # Add specific legal domains here if needed
-        if 'justia.com' in clean or 'oyez.org' in clean:
+        if 'justia.com' in clean or 'oyez.org' in clean or 'courtlistener.com' in clean:
             return True
         return False
         
     # 2. Check for " v. " or " v " pattern (Case Law)
-    # Matches: "Plessy v. Ferguson", "Roe v Wade", "State V. Jones"
-    if re.search(r'\s+v\.?\s+', clean, re.IGNORECASE):
+    # Matches: "Plessy v. Ferguson", "Roe v Wade", "State vs Jones"
+    # Logic: Space + (v or vs) + optional dot + Space
+    if re.search(r'\s+(v|vs)\.?\s+', clean, re.IGNORECASE):
         return True
         
     # 3. Check for standard citation format (e.g., "347 U.S. 483")
@@ -52,7 +53,7 @@ def extract_metadata(text):
         'raw_source': text
     }
     
-    # Strip URL to get search query if needed, or use text as is
+    # Clean up "v" to help search API
     search_query = text
     
     case_data = CourtListenerAPI.search(search_query)
