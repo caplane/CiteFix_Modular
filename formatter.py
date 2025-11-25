@@ -1,4 +1,4 @@
-\"""
+"""
 The Style Engine (formatter.py)
 Acts as the 'Stylist'.
 - Takes RAW DATA from any engine.
