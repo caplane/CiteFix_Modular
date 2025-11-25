@@ -1,17 +1,10 @@
-"""
-The Government Engine (government.py)
-Acts as a 'Specialist'.
-- Knows the Agency Map.
-- Knows how to identify a .gov URL.
-- Extracts Agency Name and Title.
-- DOES NOT Format.
-"""
-
 import re
 from datetime import datetime
 from urllib.parse import urlparse
 
-# ==================== DATA: AGENCY MAP ====================
+# ==================== DATA: AGENCY MAPS ====================
+
+# 1. DOMAIN MAP (Fast Lookup)
 GOV_AGENCY_MAP = {
     'state.gov': 'U.S. Department of State',
     'treasury.gov': 'U.S. Department of the Treasury',
@@ -36,10 +29,24 @@ GOV_AGENCY_MAP = {
     'ferc.gov': 'Federal Energy Regulatory Commission',
     'whitehouse.gov': 'The White House',
     'congress.gov': 'U.S. Congress',
-    'regulations.gov': 'U.S. Government',
+    'regulations.gov': 'U.S. Government', 
     'supremecourt.gov': 'Supreme Court of the United States',
     'uscourts.gov': 'Administrative Office of the U.S. Courts',
     'archives.gov': 'National Archives and Records Administration',
+}
+
+# 2. ACRONYM MAP (Smart Lookup for generic domains)
+AGENCY_ACRONYMS = {
+    'FDA': 'U.S. Food and Drug Administration',
+    'EPA': 'Environmental Protection Agency',
+    'DOE': 'U.S. Department of Energy',
+    'CMS': 'Centers for Medicare & Medicaid Services',
+    'CDC': 'Centers for Disease Control and Prevention',
+    'NIH': 'National Institutes of Health',
+    'DHS': 'Department of Homeland Security',
+    'FAA': 'Federal Aviation Administration',
+    'NOAA': 'National Oceanic and Atmospheric Administration',
+    'USCIS': 'U.S. Citizenship and Immigration Services',
 }
 
 # ==================== LOGIC: IDENTIFICATION ====================
@@ -84,30 +91,43 @@ def get_agency_name(domain):
 def extract_metadata(url):
     """
     Extracts RAW DATA from the URL. 
-    Does NOT return a formatted string.
+    Includes SMART LOGIC for acronym detection.
     """
     clean_url = url.rstrip('.,;:)')
     parsed = urlparse(clean_url)
     domain = parsed.netloc.lower().replace('www.', '')
     
-    # 1. Identify Author (Agency)
+    # 1. Identify Author (Agency) - Default
     agency = get_agency_name(domain)
     
     # 2. Identify Title from URL path
+    clean_title = "Government Document"
     path = parsed.path.strip('/')
+    
     if path:
         segments = [s for s in path.split('/') if s]
         if segments:
             raw_title = segments[-1]
-            # Clean up file extensions and underscores
+            
+            # Clean up file extensions
             clean_title = re.sub(r'\.[a-z]{2,4}$', '', raw_title, flags=re.IGNORECASE)
-            clean_title = re.sub(r'[_-]+', ' ', clean_title).title()
-        else:
-            clean_title = "Government Document"
+            
+            # SMART TITLE LOGIC:
+            # If title has digits (e.g. FDA-2023), treat as ID (keep hyphens)
+            if any(char.isdigit() for char in clean_title):
+                pass # Keep as is
+            else:
+                # Words (clean-power-plan) -> Clean Power Plan
+                clean_title = re.sub(r'[_-]+', ' ', clean_title).title()
+
+            # SMART AGENCY LOGIC (For generic platforms like regulations.gov)
+            if 'regulations.gov' in domain:
+                parts = clean_title.split('-')
+                if parts and parts[0].upper() in AGENCY_ACRONYMS:
+                    agency = AGENCY_ACRONYMS[parts[0].upper()]
     else:
-        clean_title = "Homepage"
+        clean_title = "Government Document"
     
-    # Return PURE DATA dictionary
     return {
         'type': 'government',
         'author': agency,
