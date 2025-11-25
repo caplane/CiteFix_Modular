@@ -33,8 +33,8 @@ def is_legal_citation(text):
         
     # 2. Check for " v. " or " v " pattern (Case Law)
     # Matches: "Plessy v. Ferguson", "Roe v Wade", "State vs Jones"
-    # Logic: Space + (v or vs) + optional dot + Space
-    if re.search(r'\s+(v|vs)\.?\s+', clean, re.IGNORECASE):
+    # Logic: Word boundary + v/vs + optional dot + Word boundary
+    if re.search(r'\b(v|vs)\.?\b', clean, re.IGNORECASE):
         return True
         
     # 3. Check for standard citation format (e.g., "347 U.S. 483")
