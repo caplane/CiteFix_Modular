@@ -85,37 +85,58 @@ class CitationFormatter:
     def _chicago_legal(data):
         """
         Chicago legal citation format (per CMOS 14.276-14.283):
-        Case Name, Volume Reporter Page (Court Year).
+        
+        Format: Case Name, Volume Reporter Page (Year).
         
         Examples:
+            Plessy v. Ferguson, 163 U.S. 537 (1896).
             Loving v. Virginia, 388 U.S. 1 (1967).
             Roe v. Wade, 410 U.S. 113 (1973).
             Brown v. Board of Education, 347 U.S. 483 (1954).
         
         Note: For U.S. Supreme Court cases, the court name is typically
         omitted since the U.S. Reports (U.S.) implies the Supreme Court.
+        For lower courts, include court abbreviation: (5th Cir. 2020).
         """
         case_name = data.get('case_name', '')
         citation = data.get('citation', '')
         court = data.get('court', '')
         year = data.get('year', '')
         
-        parts = []
+        # Build citation string
+        # Format: Case Name, Citation (Year).
+        # NOT: Case Name, Citation, (Year).  <-- no comma before parenthetical
         
-        # Case name (italicized in formal Chicago, but we use plain text here)
+        result = ""
+        
         if case_name:
-            parts.append(case_name)
+            result = case_name
         
-        # Reporter citation (e.g., "388 U.S. 1")
         if citation:
-            parts.append(citation)
-        
-        # Court and year in parentheses
-        # For Supreme Court (indicated by "U.S." reporter), omit court name
-        if year:
-            if court and 'U.S.' not in citation:
-                parts.append(f"({court} {year})")
+            if result:
+                result += ", " + citation
             else:
-                parts.append(f"({year})")
+                result = citation
         
-        return ", ".join(parts) + "."
+        # Year in parentheses (no comma before)
+        # For Supreme Court (U.S. reporter), omit court name
+        # For other courts, include court abbreviation
+        if year:
+            if citation and 'U.S.' in citation:
+                # Supreme Court - just year
+                result += f" ({year})"
+            elif court:
+                # Lower court - include court name
+                result += f" ({court} {year})"
+            else:
+                # No court info - just year
+                result += f" ({year})"
+        
+        # Add final period
+        if result:
+            result += "."
+        else:
+            # Fallback if nothing extracted
+            result = data.get('raw_source', '')
+        
+        return result
