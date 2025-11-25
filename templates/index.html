@@ -1,431 +1,376 @@
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>CiteFix Pro - Workbench</title>
-
     <script src="https://cdn.tailwindcss.com"></script>
-
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-
     <style>
-
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&display=swap');
-
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-
         .serif { font-family: 'Merriweather', serif; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        .loader { border: 3px solid #f3f3f3; border-radius: 50%; border-top: 3px solid #2563eb; width: 16px; height: 16px; animation: spin 1s linear infinite; }
-
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #2563eb;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
     </style>
-
 </head>
-
 <body class="h-screen flex flex-col overflow-hidden">
 
-
-
     <!-- Header -->
-
-    <header class="bg-white border-b border-gray-200 h-14 flex items-center justify-between px-6 z-20">
-
-        <div class="flex items-center gap-3">
-
-            <div class="bg-blue-600 text-white w-8 h-8 flex items-center justify-center rounded-md">
-
-                <i class="fas fa-tools text-sm"></i>
-
+    <header class="bg-white border-b border-gray-200 shadow-sm z-20 px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <div class="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-lg shadow-sm">
+                <i class="fas fa-paragraph text-lg"></i>
             </div>
-
-            <h1 class="font-bold text-gray-800">CiteFix <span class="text-blue-600">Workbench</span></h1>
-
+            <div>
+                <h1 class="text-xl font-bold text-gray-900 tracking-tight">CiteFix <span class="text-blue-600">Pro</span></h1>
+                <p class="text-xs text-gray-500 font-medium">Modular Remediation Engine v2.2</p>
+            </div>
         </div>
-
-        <button onclick="downloadDoc()" id="download-btn" class="hidden bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
-
-            <i class="fas fa-download"></i> Download Result
-
-        </button>
-
+        
+        <div class="flex items-center gap-3">
+            <button onclick="toggleAbout()" class="text-gray-600 hover:text-blue-600 font-medium text-sm px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fas fa-info-circle mr-1"></i> How it Works
+            </button>
+            <div class="h-6 w-px bg-gray-300 mx-1"></div>
+            <button onclick="resetSession()" class="text-red-600 hover:text-red-700 font-medium text-sm px-3 py-2 rounded-lg hover:bg-red-50 transition-colors">
+                <i class="fas fa-trash-alt mr-1"></i> Reset Project
+            </button>
+        </div>
     </header>
 
-
-
-    <!-- Main -->
-
+    <!-- Main Application Layout -->
     <main class="flex-1 flex overflow-hidden">
-
-        <!-- Left: Upload & List -->
-
-        <aside class="w-1/3 bg-white border-r border-gray-200 flex flex-col">
-
-            <div class="p-4 border-b border-gray-100 bg-gray-50">
-
+        
+        <!-- Sidebar: List & Controls -->
+        <aside class="w-1/3 bg-white border-r border-gray-200 flex flex-col z-10">
+            <!-- Upload Area -->
+            <div class="p-6 border-b border-gray-100 bg-gray-50">
                 <input type="file" id="file-input" class="hidden" accept=".docx">
-
-                <button onclick="document.getElementById('file-input').click()" class="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 text-gray-500 hover:border-blue-500 hover:bg-blue-50 transition-all text-sm font-medium">
-
-                    <i class="fas fa-cloud-upload-alt mr-2"></i> Upload Document
-
+                <button onclick="document.getElementById('file-input').click()" class="w-full border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group flex flex-col items-center gap-2">
+                    <i class="fas fa-cloud-upload-alt text-2xl text-gray-400 group-hover:text-blue-500 transition-colors"></i>
+                    <span class="text-sm font-medium text-gray-600 group-hover:text-blue-700">Click to Upload Document (.docx)</span>
                 </button>
-
+                <div id="upload-loading" class="hidden mt-3 flex items-center justify-center gap-2 text-xs text-gray-500">
+                    <div class="loader w-4 h-4"></div> Parsing Structure...
+                </div>
+                <div id="download-area" class="hidden mt-4">
+                    <a href="/download" class="block w-full bg-gray-900 hover:bg-gray-800 text-white text-center font-medium py-2 px-4 rounded-lg transition-colors text-sm">
+                        <i class="fas fa-file-export mr-2"></i> Download Result
+                    </a>
+                </div>
             </div>
 
-            <div id="citation-list" class="flex-1 overflow-y-auto p-4 space-y-3">
-
-                <!-- Items will populate here -->
-
-                <div class="text-center text-gray-400 mt-10 text-sm">Upload a file to begin.</div>
-
+            <!-- List Header -->
+            <div class="px-6 py-3 bg-white border-b border-gray-100 flex justify-between items-center">
+                <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Citations Found</span>
+                <span id="citation-count" class="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600">0</span>
             </div>
 
+            <!-- Scrollable List -->
+            <div id="citation-list" class="flex-1 overflow-y-auto p-4 space-y-2">
+                <!-- Empty State -->
+                <div id="list-empty" class="text-center py-10 text-gray-400 text-sm">
+                    Upload a file to see citations here.
+                </div>
+            </div>
         </aside>
 
-
-
-        <!-- Right: Editor Panel -->
-
-        <section id="editor-panel" class="w-2/3 bg-gray-50 p-8 flex flex-col overflow-y-auto">
-
+        <!-- Main Workspace: Editor -->
+        <section id="editor-panel" class="flex-1 bg-gray-50 p-8 flex flex-col overflow-y-auto">
             <!-- Empty State -->
-
             <div id="editor-empty" class="flex flex-col items-center justify-center h-full text-gray-400">
-
                 <i class="fas fa-mouse-pointer text-4xl mb-4 opacity-20"></i>
-
-                <p>Select a citation from the left to resolve.</p>
-
+                <p class="text-sm font-medium">Select a citation from the left to resolve.</p>
             </div>
 
-
-
-            <!-- Active Editor (Hidden initially) -->
-
+            <!-- Active Editor -->
             <div id="editor-active" class="hidden max-w-3xl mx-auto w-full space-y-6">
-
                 
-
-                <!-- Original Context -->
-
+                <!-- Original Context Card -->
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-
-                    <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Original Text</h3>
-
-                    <div id="active-original" class="text-gray-800 font-serif italic p-3 bg-gray-50 rounded border border-gray-100"></div>
-
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase">Original Text (Endnote)</h3>
+                        <span id="active-id" class="text-xs font-mono text-gray-400">ID: #</span>
+                    </div>
+                    <div id="active-original" class="text-gray-800 font-serif italic p-4 bg-gray-50 rounded-lg border border-gray-100 leading-relaxed"></div>
                 </div>
-
-
 
                 <!-- Candidate List -->
-
-                <div>
-
+                <div id="candidates-section">
                     <div class="flex justify-between items-end mb-3">
-
-                        <h3 class="text-xs font-bold text-gray-400 uppercase">Possible Matches</h3>
-
-                        <span class="text-xs text-blue-600 font-medium cursor-pointer hover:underline" onclick="searchCandidates()">
-
-                            <i class="fas fa-sync-alt mr-1"></i> Refresh
-
-                        </span>
-
+                        <h3 class="text-xs font-bold text-gray-400 uppercase">Proposed Resolutions</h3>
+                        <button onclick="searchCandidates()" class="text-xs text-blue-600 font-medium hover:underline">
+                            <i class="fas fa-sync-alt mr-1"></i> Refresh Search
+                        </button>
                     </div>
-
                     <div id="candidates-list" class="space-y-3">
-
                         <!-- Candidates injected here -->
-
                     </div>
-
                 </div>
 
-
-
-                <!-- Manual Edit Box -->
-
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-blue-200 ring-1 ring-blue-100">
-
-                    <h3 class="text-xs font-bold text-blue-600 uppercase mb-2 flex items-center gap-2">
-
-                        <i class="fas fa-pen"></i> Final Citation Editor
-
+                <!-- Final Editor -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-blue-200 ring-1 ring-blue-50">
+                    <h3 class="text-xs font-bold text-blue-600 uppercase mb-3 flex items-center gap-2">
+                        <i class="fas fa-pen-nib"></i> Final Citation Editor
                     </h3>
-
-                    <textarea id="final-edit-area" class="w-full p-3 border border-gray-300 rounded-lg font-serif text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" rows="3"></textarea>
-
+                    <textarea id="final-edit-area" class="w-full p-4 border border-gray-300 rounded-lg font-serif text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y min-h-[100px]" placeholder="Select a candidate or type manually..."></textarea>
                     
-
-                    <div class="flex gap-3 mt-4">
-
-                        <button onclick="commitChange()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors">
-
-                            <i class="fas fa-check mr-2"></i> Accept & Save
-
+                    <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
+                        <button onclick="commitChange()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2">
+                            <i class="fas fa-check"></i> Accept & Save
                         </button>
-
-                        <button onclick="appendMode()" class="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors border border-gray-200" title="Add another source">
-
-                            <i class="fas fa-plus mr-1"></i> Append
-
+                        <button onclick="appendMode()" class="px-5 py-2.5 bg-white text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors border border-gray-200 shadow-sm flex items-center gap-2" title="Add another source to this note">
+                            <i class="fas fa-plus text-gray-400"></i> Append Source
                         </button>
-
                     </div>
-
                 </div>
-
-
 
             </div>
-
         </section>
-
     </main>
 
+    <!-- About Modal -->
+    <div id="about-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl m-4 p-8 relative animate-fade-in">
+            <button onclick="toggleAbout()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+            
+            <div class="flex items-center gap-3 mb-6">
+                <div class="bg-blue-100 p-3 rounded-full text-blue-600">
+                    <i class="fas fa-lightbulb text-xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900">About CiteFix Pro</h2>
+            </div>
 
+            <div class="prose prose-sm text-gray-600 space-y-4">
+                <p>CiteFix Pro is a <strong>deterministic document remediation engine</strong> designed for historians, legal scholars, and academics.</p>
+                
+                <div class="grid grid-cols-2 gap-4 my-6">
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <h3 class="font-bold text-gray-900 mb-2 text-sm"><i class="fas fa-random text-blue-500 mr-2"></i>The Router</h3>
+                        <p class="text-xs leading-relaxed">Detects mixed content (URLs, Books, Legal Cases) within a single footnote and splits them for parallel processing.</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                        <h3 class="font-bold text-gray-900 mb-2 text-sm"><i class="fas fa-university text-purple-500 mr-2"></i>Extraction Engines</h3>
+                        <p class="text-xs leading-relaxed">Uses deterministic mapping (for Government/Legal) and API queries (for Books) to retrieve authoritative metadata.</p>
+                    </div>
+                </div>
 
+                <p>Unlike generative AI, CiteFix uses strict heuristic rules to identify sources and reformat them into <strong>Chicago Manual of Style (17th Ed.)</strong>, preserving your document's structure and active hyperlinks.</p>
+            </div>
+            
+            <div class="mt-8 text-right">
+                <button onclick="toggleAbout()" class="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors text-sm font-medium">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
     <script>
-
         let activeNoteId = null;
-
         let currentCitations = [];
 
+        // === UI Toggles ===
+        function toggleAbout() {
+            document.getElementById('about-modal').classList.toggle('hidden');
+        }
 
-
-        // Upload Logic
-
-        document.getElementById('file-input').addEventListener('change', async (e) => {
-
-            const file = e.target.files[0];
-
-            if (!file) return;
-
-            
-
-            const formData = new FormData();
-
-            formData.append('file', file);
-
-            
-
-            const res = await fetch('/upload', { method: 'POST', body: formData });
-
-            const data = await res.json();
-
-            
-
-            if (data.success) {
-
-                currentCitations = data.endnotes;
-
-                renderList();
-
-                document.getElementById('download-btn').classList.remove('hidden');
-
+        async function resetSession() {
+            if(confirm('Are you sure? This will clear your current document and progress.')) {
+                await fetch('/reset', {method: 'POST'});
+                window.location.reload();
             }
+        }
 
+        // === Upload Logic ===
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const loading = document.getElementById('upload-loading');
+            const btn = e.target.parentElement; // The button wrapper
+            
+            loading.classList.remove('hidden');
+            btn.classList.add('opacity-50', 'pointer-events-none');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.success) {
+                    currentCitations = data.endnotes;
+                    document.getElementById('citation-count').innerText = currentCitations.length;
+                    document.getElementById('download-area').classList.remove('hidden');
+                    renderList();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Upload failed. Please try again.');
+            } finally {
+                loading.classList.add('hidden');
+                btn.classList.remove('opacity-50', 'pointer-events-none');
+            }
         });
 
-
-
+        // === List Rendering ===
         function renderList() {
-
             const list = document.getElementById('citation-list');
-
             list.innerHTML = '';
-
             
-
             currentCitations.forEach(note => {
-
                 const div = document.createElement('div');
-
                 div.id = `list-item-${note.id}`;
-
-                div.className = 'p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-blue-400 transition-all shadow-sm text-sm text-gray-600 truncate font-serif';
-
+                div.className = 'p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all text-sm text-gray-600 truncate font-serif';
                 div.innerText = note.text;
-
-                div.onclick = () => openEditor(note.id, note.text);
-
+                div.onclick = () => loadEditor(note);
                 list.appendChild(div);
-
             });
-
         }
 
-
-
-        function openEditor(id, text) {
-
-            activeNoteId = id;
-
+        // === Editor Logic ===
+        function loadEditor(note) {
+            activeNoteId = note.id;
+            
+            // UI State
             document.getElementById('editor-empty').classList.add('hidden');
-
             document.getElementById('editor-active').classList.remove('hidden');
-
             
-
-            document.getElementById('active-original').innerText = text;
-
-            document.getElementById('final-edit-area').value = text; 
-
+            // Populate Data
+            document.getElementById('active-id').innerText = `ID: ${note.id}`;
+            document.getElementById('active-original').innerText = note.text;
+            document.getElementById('final-edit-area').value = note.text; // Default to original
             
-
-            document.getElementById('candidates-list').innerHTML = '<div class="loader mx-auto"></div>';
-
-            searchCandidates(text);
-
+            // Clear candidates and search
+            document.getElementById('candidates-list').innerHTML = `
+                <div class="flex justify-center py-8">
+                    <div class="loader"></div>
+                </div>
+            `;
+            searchCandidates(note.text);
         }
 
+        async function searchCandidates(text) {
+            try {
+                const res = await fetch('/search', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ text: text })
+                });
+                const data = await res.json();
+                renderCandidates(data.results);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('candidates-list').innerHTML = `<div class="text-red-500 text-sm text-center">Search failed.</div>`;
+            }
+        }
 
-
-        async function searchCandidates(queryText = null) {
-
-            const text = queryText || document.getElementById('active-original').innerText;
-
-            
-
-            const res = await fetch('/search', {
-
-                method: 'POST',
-
-                headers: {'Content-Type': 'application/json'},
-
-                body: JSON.stringify({ text: text })
-
-            });
-
-            const data = await res.json();
-
-            
-
+        function renderCandidates(results) {
             const list = document.getElementById('candidates-list');
-
             list.innerHTML = '';
 
-
-
-            if (data.results && data.results.length > 0) {
-
-                data.results.forEach(cand => {
-
-                    const item = document.createElement('div');
-
-                    item.className = 'bg-white p-3 rounded-lg border border-gray-200 hover:bg-blue-50 cursor-pointer group transition-colors flex justify-between items-center';
-
-                    item.onclick = () => {
-
-                        document.getElementById('final-edit-area').value = cand.formatted;
-
-                    };
-
-                    
-
-                    item.innerHTML = `
-
-                        <div class="flex-1">
-
-                            <div class="flex items-center gap-2 mb-1">
-
-                                <span class="text-[10px] font-bold uppercase bg-gray-100 text-gray-600 px-2 py-0.5 rounded">${cand.source}</span>
-
-                                ${cand.details ? `<span class="text-xs text-gray-400">${cand.details}</span>` : ''}
-
-                            </div>
-
-                            <p class="text-sm font-serif text-gray-800">${cand.formatted}</p>
-
-                        </div>
-
-                        <button class="text-gray-300 group-hover:text-blue-600 ml-3">
-
-                            <i class="fas fa-arrow-down"></i> Use
-
-                        </button>
-
-                    `;
-
-                    list.appendChild(item);
-
-                });
-
-            } else {
-
-                list.innerHTML = '<div class="text-sm text-gray-400 italic text-center">No matches found.</div>';
-
+            if (!results || results.length === 0) {
+                list.innerHTML = `<div class="text-gray-400 text-sm text-center italic py-4">No automated matches found.</div>`;
+                return;
             }
 
+            results.forEach(cand => {
+                const item = document.createElement('div');
+                item.className = 'bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50/30 cursor-pointer group transition-all';
+                item.onclick = () => {
+                    document.getElementById('final-edit-area').value = cand.formatted;
+                };
+                
+                // Color coding based on source
+                let badgeColor = "bg-gray-100 text-gray-600";
+                if (cand.type === 'government') badgeColor = "bg-purple-100 text-purple-700";
+                if (cand.type === 'book') badgeColor = "bg-blue-100 text-blue-700";
+
+                item.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded ${badgeColor}">${cand.source}</span>
+                            ${cand.details ? `<span class="text-xs text-gray-400 truncate max-w-[200px]">${cand.details}</span>` : ''}
+                        </div>
+                        <button class="text-xs font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity bg-white px-2 py-1 rounded border border-blue-100 shadow-sm">
+                            Use This <i class="fas fa-arrow-down ml-1"></i>
+                        </button>
+                    </div>
+                    <p class="text-sm font-serif text-gray-800 leading-relaxed">${cand.formatted}</p>
+                `;
+                list.appendChild(item);
+            });
         }
-
-
 
         async function commitChange() {
-
-            const newText = document.getElementById('final-edit-area').value;
-
             if (!activeNoteId) return;
+            const newText = document.getElementById('final-edit-area').value;
+            const btn = document.querySelector('button[onclick="commitChange()"]');
+            const originalContent = btn.innerHTML;
 
-
-
-            const res = await fetch('/update', {
-
-                method: 'POST',
-
-                headers: {'Content-Type': 'application/json'},
-
-                body: JSON.stringify({ id: activeNoteId, html: newText })
-
-            });
-
-            const data = await res.json();
-
+            // Optimistic UI update
+            btn.innerHTML = `<div class="loader w-4 h-4 border-white border-t-transparent"></div> Saving...`;
             
-
-            if (data.success) {
-
-                const listItem = document.getElementById(`list-item-${activeNoteId}`);
-
-                listItem.className = "p-3 bg-green-50 border border-green-200 rounded-lg cursor-pointer shadow-sm text-sm text-green-800 truncate font-serif";
-
-                listItem.innerHTML = `<i class="fas fa-check mr-2"></i> ${newText}`;
-
+            try {
+                const res = await fetch('/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id: activeNoteId, html: newText })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    // Update List Item visually
+                    const listItem = document.getElementById(`list-item-${activeNoteId}`);
+                    listItem.classList.remove('bg-white', 'text-gray-600');
+                    listItem.classList.add('bg-green-50', 'text-green-800', 'border-green-200');
+                    listItem.innerHTML = `<i class="fas fa-check text-xs mr-2"></i> ${newText}`;
+                    
+                    // Button feedback
+                    btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                    btn.classList.add('bg-green-600', 'hover:bg-green-700');
+                    btn.innerHTML = `<i class="fas fa-check mr-2"></i> Saved`;
+                    
+                    setTimeout(() => {
+                        btn.innerHTML = originalContent; // Reset text
+                        btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                        btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    }, 2000);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Failed to save changes');
+                btn.innerHTML = originalContent;
             }
-
         }
-
-
 
         function appendMode() {
-
-            const current = document.getElementById('final-edit-area').value;
-
-            document.getElementById('final-edit-area').value = current + "; ";
-
-            document.getElementById('final-edit-area').focus();
-
+            const area = document.getElementById('final-edit-area');
+            area.value = area.value.trim() + "; ";
+            area.focus();
+            // Move cursor to end
+            area.setSelectionRange(area.value.length, area.value.length);
         }
-
-
-
-        function downloadDoc() {
-
-            window.location.href = "/download";
-
-        }
-
     </script>
-
 </body>
-
 </html>
