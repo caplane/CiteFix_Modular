@@ -53,8 +53,8 @@ def resolve_single_segment(text, style):
         
         results.append(legal_result)
         
-        # CRITICAL FIX: If we found a perfect citation, stop here.
-        # But if confidence is MEDIUM (citation missing), continue to Book search below.
+        # CRITICAL FIX: Only stop if we have a perfect citation.
+        # If confidence is MEDIUM, keep going to Books/Gov.
         if confidence == 'high':
             return results
 
@@ -81,7 +81,6 @@ def resolve_single_segment(text, style):
             return results
 
     # 3. BOOK SEARCH (Fallback)
-    # This now runs if Legal check failed OR returned medium confidence
     candidates = citation.extract_metadata(text)
     for cand in candidates:
         formatted = formatter.CitationFormatter.format(cand, style)
