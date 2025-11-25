@@ -1,24 +1,8 @@
-"""
-The Newspaper Engine (newspaper.py) - Extended Edition
-- Includes 50+ Major US/Intl Sources.
-- Includes 'Archive.org' Backdoor and 'JSON-LD' Parsing.
-- Robust error handling for missing libraries.
-"""
-
 import re
 import json
+import requests
 from datetime import datetime
-try:
-    from urllib.parse import urlparse
-except ImportError:
-    from urlparse import urlparse 
-
-# Check for requests library safely
-try:
-    import requests
-    REQUESTS_AVAILABLE = True
-except ImportError:
-    REQUESTS_AVAILABLE = False
+from urllib.parse import urlparse
 
 # ==================== DATA: EXPANDED SOURCE MAP ====================
 
@@ -46,7 +30,7 @@ NEWSPAPER_MAP = {
     'baltimoresun.com': 'The Baltimore Sun',
     'detroitnews.com': 'The Detroit News',
     'freep.com': 'Detroit Free Press',
-    
+
     # --- International & Wires ---
     'theguardian.com': 'The Guardian',
     'ft.com': 'Financial Times',
@@ -177,10 +161,8 @@ def extract_metadata(url):
     if clean_slug:
         metadata['title'] = clean_slug
 
-    # --- ACTIVE LAYER: SCRAPING (Only if requests is installed) ---
-    if not REQUESTS_AVAILABLE:
-        return metadata
-
+    # --- ACTIVE LAYER: SCRAPING ---
+    
     html_content = None
     
     headers = {
@@ -211,4 +193,55 @@ def extract_metadata(url):
     if html_content:
         # 1. Try JSON-LD (Best Source)
         try:
-            json_match = re.search(r'
+            # Separated pattern to avoid line-length errors in editor
+            json_pattern = r'<script type="application/ld\+json">(.*?)</script>'
+            json_match = re.search(json_pattern, html_content, re.DOTALL)
+            
+            if json_match:
+                data = json.loads(json_match.group(1))
+                if isinstance(data, list): 
+                    if len(data) > 0: data = data[0]
+                    else: data = {}
+                
+                # Extract Author
+                if 'author' in data:
+                    authors = data['author']
+                    if isinstance(authors, list):
+                        names = [p.get('name') for p in authors if isinstance(p, dict) and 'name' in p]
+                        if names: metadata['author'] = " and ".join(names)
+                    elif isinstance(authors, dict):
+                        if 'name' in authors: metadata['author'] = authors['name']
+                
+                # Extract Title
+                if 'headline' in data:
+                    metadata['title'] = data['headline']
+                    
+                # Extract Date
+                if 'datePublished' in data and data['datePublished']:
+                    dp = str(data['datePublished'])[:10]
+                    try:
+                        dt = datetime.strptime(dp, "%Y-%m-%d")
+                        metadata['date'] = dt.strftime("%B %d, %Y")
+                    except: pass
+        except: pass
+
+        # 2. Fallback to Meta Tags
+        if not metadata['author']:
+            try:
+                author_match = re.search(r'<meta\s+name=["\'](?:byl|author|dc.creator|bylines)["\']\s+content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+                if not author_match:
+                    author_match = re.search(r'<meta\s+property=["\']article:author["\']\s+content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+
+                if author_match:
+                    author_text = author_match.group(1)
+                    if author_text.lower().startswith("by "):
+                        author_text = author_text[3:]
+                    metadata['author'] = author_text.strip()
+                    
+                og_title = re.search(r'<meta\s+property=["\']og:title["\']\s+content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
+                if og_title:
+                    real_title = og_title.group(1).split('|')[0].strip()
+                    metadata['title'] = real_title
+            except: pass
+
+    return metadata
