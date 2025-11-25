@@ -1,61 +1,61 @@
 """
 The Search Router (search.py)
-Acts as the 'Traffic Cop'.
-- Analyzes input text.
-- Decides which Engine (Government, Book, Newspaper, etc.) should handle it.
-- Sends the raw extracted data to the Formatter.
+- Supports returning MULTIPLE candidates.
+- Handles Semicolon splitting for the UI.
 """
 
-# === ENGINE IMPORTS ===
-import government   # Extraction Engine 1
-import citation     # Extraction Engine 2 (Books)
-import formatter    # The Style Engine
+import re
+import government
+import citation
+import formatter
 
 def search_citation(text, style='chicago'):
     """
-    Main Pipeline:
-    1. Identify Source -> 2. Extract Data -> 3. Format Data
+    Returns a list of candidate results.
+    Each result has: { formatted, source, confidence, type }
     """
     results = []
-    metadata = None
-    source_label = 'Unknown'
-    confidence = 'low'
-
-    # === STEP 1: ROUTING & EXTRACTION ===
+    clean_text = text.strip()
     
-    # Priority 1: Check Government Engine
-    if government.is_gov_source(text):
-        metadata = government.extract_metadata(text)
-        confidence = 'high'
-        source_label = 'U.S. Government'
-        
-    # Priority 2: Check Generic URL (if not gov)
-    elif text.startswith(('http://', 'https://', 'www.')):
+    # 1. Government / URL Check (Deterministic = 1 Result)
+    urls = re.findall(r'(https?://[^\s]+)', clean_text)
+    if urls:
+        for raw_url in urls:
+            clean_url = raw_url.rstrip('.,;:)')
+            if government.is_gov_source(clean_url):
+                metadata = government.extract_metadata(clean_url)
+                formatted = formatter.CitationFormatter.format(metadata, style)
+                results.append({
+                    'formatted': formatted,
+                    'source': 'U.S. Government',
+                    'confidence': 'high',
+                    'type': 'government'
+                })
+                return results # Return immediately for Gov docs
+            
+            # Generic URL fallback
+            results.append({
+                'formatted': clean_text,
+                'source': 'Web URL',
+                'confidence': 'medium',
+                'type': 'website'
+            })
+            return results
+
+    # 2. Book Search (Returns 3 Candidates)
+    candidates = citation.extract_metadata(clean_text)
+    
+    for cand in candidates:
+        formatted = formatter.CitationFormatter.format(cand, style)
         results.append({
-            'formatted': text, 
-            'source': 'Web URL', 
-            'confidence': 'medium'
+            'formatted': formatted,
+            'source': 'Google Books',
+            'confidence': 'medium' if cand.get('authors') else 'low',
+            'type': 'book',
+            'details': f"{cand.get('title')} ({cand.get('year')})"
         })
-        return results
-
-    # Priority 3: Fallback to Book Engine (Google Books)
-    else:
-        metadata = citation.extract_metadata(text)
-        confidence = 'medium' if metadata.get('authors') else 'low'
-        source_label = 'Google Books'
-
-    # === STEP 2: FORMATTING ===
-    
-    if metadata:
-        # Pass the raw data to the formatter to apply style rules
-        formatted_text = formatter.CitationFormatter.format(metadata, style=style)
         
-        results.append({
-            'formatted': formatted_text,
-            'source': source_label,
-            'confidence': confidence,
-            'debug_metadata': metadata
-        })
-    
+    if not results:
+        results.append({'formatted': text, 'source': 'No Match', 'confidence': 'low', 'type': 'unknown'})
+        
     return results
-Se
