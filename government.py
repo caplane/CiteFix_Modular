@@ -1,4 +1,5 @@
 import re
+import difflib  # <--- NEW: Fuzzy Matching Library
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -35,19 +36,16 @@ GOV_AGENCY_MAP = {
     'archives.gov': 'National Archives and Records Administration',
 }
 
-# 2. ACRONYM MAP (Smart Lookup for generic domains)
-AGENCY_ACRONYMS = {
-    'FDA': 'U.S. Food and Drug Administration',
-    'EPA': 'Environmental Protection Agency',
-    'DOE': 'U.S. Department of Energy',
-    'CMS': 'Centers for Medicare & Medicaid Services',
-    'CDC': 'Centers for Disease Control and Prevention',
-    'NIH': 'National Institutes of Health',
-    'DHS': 'Department of Homeland Security',
-    'FAA': 'Federal Aviation Administration',
-    'NOAA': 'National Oceanic and Atmospheric Administration',
-    'USCIS': 'U.S. Citizenship and Immigration Services',
-}
+# 2. AGENCY NAME LIBRARY (For Fuzzy Matching)
+AGENCY_NAMES = list(GOV_AGENCY_MAP.values()) + [
+    'U.S. Citizenship and Immigration Services',
+    'Federal Aviation Administration',
+    'National Oceanic and Atmospheric Administration',
+    'Centers for Medicare & Medicaid Services',
+    'Federal Bureau of Investigation',
+    'Central Intelligence Agency',
+    'National Security Agency'
+]
 
 # ==================== LOGIC: IDENTIFICATION ====================
 
@@ -55,37 +53,43 @@ def is_gov_source(text):
     """
     Determines if the input text triggers the Government Module.
     """
-    if not text:
-        return False
-        
-    clean = text.rstrip('.,;:)')
+    if not text: return False
+    clean = text.rstrip('.,;:)').lower()
     
     # Check 1: Regex for .gov ending
-    if re.search(r'\.gov(/|$)', clean, re.IGNORECASE):
+    if re.search(r'\.gov(/|$)', clean):
         return True
         
     # Check 2: Known domain lookup
     try:
-        domain = urlparse(clean).netloc.lower().replace('www.', '')
-        if domain in GOV_AGENCY_MAP:
+        domain = urlparse(clean).netloc.replace('www.', '')
+        if any(key in domain for key in GOV_AGENCY_MAP):
             return True
-        for known in GOV_AGENCY_MAP:
-            if domain.endswith('.' + known):
-                return True
-    except:
-        pass
+    except: pass
+    
     return False
 
 # ==================== LOGIC: EXTRACTION ====================
 
-def get_agency_name(domain):
-    """Resolve specific agency name from domain"""
-    domain = domain.lower().replace('www.', '')
-    if domain in GOV_AGENCY_MAP:
-        return GOV_AGENCY_MAP[domain]
+def get_agency_name(text):
+    """
+    Resolve specific agency name from domain OR text using Fuzzy Matching.
+    """
+    clean = text.lower().replace('www.', '')
+    
+    # 1. Domain Match
+    if clean in GOV_AGENCY_MAP:
+        return GOV_AGENCY_MAP[clean]
     for known_domain, agency in GOV_AGENCY_MAP.items():
-        if domain.endswith('.' + known_domain):
+        if clean.endswith('.' + known_domain):
             return agency
+            
+    # 2. Fuzzy Text Match (The "Smart" Fix)
+    # Matches "dept of state" -> "U.S. Department of State"
+    matches = difflib.get_close_matches(text, AGENCY_NAMES, n=1, cutoff=0.6)
+    if matches:
+        return matches[0]
+        
     return "U.S. Government"
 
 def extract_metadata(url):
@@ -97,7 +101,7 @@ def extract_metadata(url):
     parsed = urlparse(clean_url)
     domain = parsed.netloc.lower().replace('www.', '')
     
-    # 1. Identify Author (Agency) - Default
+    # 1. Identify Author (Agency)
     agency = get_agency_name(domain)
     
     # 2. Identify Title from URL path
@@ -113,21 +117,19 @@ def extract_metadata(url):
             clean_title = re.sub(r'\.[a-z]{2,4}$', '', raw_title, flags=re.IGNORECASE)
             
             # SMART TITLE LOGIC:
-            # If title has digits (e.g. FDA-2023), treat as ID (keep hyphens)
-            if any(char.isdigit() for char in clean_title):
-                pass # Keep as is
-            else:
+            if not any(char.isdigit() for char in clean_title):
                 # Words (clean-power-plan) -> Clean Power Plan
                 clean_title = re.sub(r'[_-]+', ' ', clean_title).title()
 
             # SMART AGENCY LOGIC (For generic platforms like regulations.gov)
             if 'regulations.gov' in domain:
                 parts = clean_title.split('-')
-                if parts and parts[0].upper() in AGENCY_ACRONYMS:
-                    agency = AGENCY_ACRONYMS[parts[0].upper()]
-    else:
-        clean_title = "Government Document"
-    
+                # Try to guess agency from the document ID prefix (e.g. FDA-2023)
+                possible_acronym = parts[0].upper()
+                fuzzy_agency = get_agency_name(possible_acronym) 
+                if fuzzy_agency != "U.S. Government":
+                    agency = fuzzy_agency
+
     return {
         'type': 'government',
         'author': agency,
