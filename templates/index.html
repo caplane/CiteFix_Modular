@@ -8,15 +8,11 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>CiteFix Pro - Modular Workbench</title>
+    <title>CiteFix Pro - Workbench</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- FontAwesome for Icons -->
-
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-
-    <!-- Google Fonts -->
 
     <style>
 
@@ -26,35 +22,7 @@
 
         .serif { font-family: 'Merriweather', serif; }
 
-        
-
-        /* Custom Scrollbar */
-
-        ::-webkit-scrollbar { width: 8px; }
-
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-
-
-        .loader {
-
-            border: 3px solid #f3f3f3;
-
-            border-radius: 50%;
-
-            border-top: 3px solid #2563eb;
-
-            width: 20px;
-
-            height: 20px;
-
-            animation: spin 1s linear infinite;
-
-        }
+        .loader { border: 3px solid #f3f3f3; border-radius: 50%; border-top: 3px solid #2563eb; width: 16px; height: 16px; animation: spin 1s linear infinite; }
 
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
@@ -68,161 +36,55 @@
 
     <!-- Header -->
 
-    <header class="bg-white border-b border-gray-200 shadow-sm z-20 px-6 h-16 flex items-center justify-between">
-
-        <div class="flex items-center gap-4">
-
-            <div class="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-lg shadow-sm">
-
-                <i class="fas fa-paragraph text-lg"></i>
-
-            </div>
-
-            <div>
-
-                <h1 class="text-xl font-bold text-gray-900 tracking-tight">CiteFix <span class="text-blue-600">Pro</span></h1>
-
-                <p class="text-xs text-gray-500 font-medium">Modular Remediation Engine v2.1</p>
-
-            </div>
-
-        </div>
-
-        
+    <header class="bg-white border-b border-gray-200 h-14 flex items-center justify-between px-6 z-20">
 
         <div class="flex items-center gap-3">
 
-            <button onclick="toggleAbout()" class="text-gray-600 hover:text-blue-600 font-medium text-sm px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+            <div class="bg-blue-600 text-white w-8 h-8 flex items-center justify-center rounded-md">
 
-                <i class="fas fa-info-circle mr-1"></i> How it Works
+                <i class="fas fa-tools text-sm"></i>
 
-            </button>
+            </div>
 
-            <div class="h-6 w-px bg-gray-300 mx-1"></div>
-
-            <button onclick="resetSession()" class="text-red-600 hover:text-red-700 font-medium text-sm px-3 py-2 rounded-lg hover:bg-red-50 transition-colors">
-
-                <i class="fas fa-trash-alt mr-1"></i> Reset Project
-
-            </button>
+            <h1 class="font-bold text-gray-800">CiteFix <span class="text-blue-600">Workbench</span></h1>
 
         </div>
+
+        <button onclick="downloadDoc()" id="download-btn" class="hidden bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+
+            <i class="fas fa-download"></i> Download Result
+
+        </button>
 
     </header>
 
 
 
-    <!-- Main Application Layout -->
+    <!-- Main -->
 
     <main class="flex-1 flex overflow-hidden">
 
-        
+        <!-- Left: Upload & List -->
 
-        <!-- Sidebar: Controls & Status -->
+        <aside class="w-1/3 bg-white border-r border-gray-200 flex flex-col">
 
-        <aside class="w-80 bg-white border-r border-gray-200 flex flex-col z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+            <div class="p-4 border-b border-gray-100 bg-gray-50">
 
-            <div class="p-6 border-b border-gray-100">
+                <input type="file" id="file-input" class="hidden" accept=".docx">
 
-                <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Project Status</h2>
+                <button onclick="document.getElementById('file-input').click()" class="w-full border-2 border-dashed border-gray-300 rounded-lg p-4 text-gray-500 hover:border-blue-500 hover:bg-blue-50 transition-all text-sm font-medium">
 
-                
+                    <i class="fas fa-cloud-upload-alt mr-2"></i> Upload Document
 
-                <!-- Status Card -->
-
-                <div class="bg-blue-50 rounded-xl p-4 border border-blue-100">
-
-                    <div class="flex justify-between items-center mb-2">
-
-                        <span class="text-blue-800 font-semibold text-sm">Active Document</span>
-
-                        <i class="fas fa-file-word text-blue-400"></i>
-
-                    </div>
-
-                    <p id="filename-display" class="text-gray-900 font-medium truncate">No file loaded</p>
-
-                    <p id="status-display" class="text-xs text-blue-600 mt-1">Waiting for upload...</p>
-
-                </div>
+                </button>
 
             </div>
 
+            <div id="citation-list" class="flex-1 overflow-y-auto p-4 space-y-3">
 
+                <!-- Items will populate here -->
 
-            <!-- Upload / Action Area -->
-
-            <div class="p-6 flex-1 flex flex-col gap-4">
-
-                <!-- Upload Zone -->
-
-                <div id="upload-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group h-40 flex flex-col justify-center items-center">
-
-                    <input type="file" id="file-input" class="hidden" accept=".docx">
-
-                    <div id="upload-content">
-
-                        <div class="w-12 h-12 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-
-                            <i class="fas fa-cloud-upload-alt text-xl"></i>
-
-                        </div>
-
-                        <p class="text-sm font-medium text-gray-700">Click to Upload .docx</p>
-
-                        <p class="text-xs text-gray-400 mt-1">Word Documents Only</p>
-
-                    </div>
-
-                    <!-- Loader -->
-
-                    <div id="upload-loading" class="hidden">
-
-                        <div class="loader mx-auto mb-3"></div>
-
-                        <p class="text-xs text-gray-500 font-medium">Parsing XML Structure...</p>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Stats Grid (Hidden initially) -->
-
-                <div id="stats-grid" class="hidden grid grid-cols-2 gap-3">
-
-                    <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
-
-                        <span class="text-2xl font-bold text-gray-800 block" id="total-citations">0</span>
-
-                        <span class="text-[10px] uppercase font-bold text-gray-400">Total Citations</span>
-
-                    </div>
-
-                    <div class="bg-green-50 p-3 rounded-lg border border-green-100">
-
-                        <span class="text-2xl font-bold text-green-700 block" id="resolved-count">0</span>
-
-                        <span class="text-[10px] uppercase font-bold text-green-600">Resolved</span>
-
-                    </div>
-
-                </div>
-
-
-
-                <div class="flex-1"></div> <!-- Spacer -->
-
-
-
-                <!-- Download Button (Hidden) -->
-
-                <a id="download-btn" href="/download" class="hidden w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-3 px-4 rounded-xl transition-all shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
-
-                    <i class="fas fa-file-export"></i> Export Document
-
-                </a>
+                <div class="text-center text-gray-400 mt-10 text-sm">Upload a file to begin.</div>
 
             </div>
 
@@ -230,43 +92,99 @@
 
 
 
-        <!-- Main Workspace -->
+        <!-- Right: Editor Panel -->
 
-        <section class="flex-1 bg-gray-50/50 flex flex-col relative">
+        <section id="editor-panel" class="w-2/3 bg-gray-50 p-8 flex flex-col overflow-y-auto">
 
-            <!-- Toolbar -->
+            <!-- Empty State -->
 
-            <div class="h-14 border-b border-gray-200 bg-white px-6 flex items-center justify-between sticky top-0 z-10">
+            <div id="editor-empty" class="flex flex-col items-center justify-center h-full text-gray-400">
 
-                <div class="flex items-center gap-2 text-sm text-gray-600">
+                <i class="fas fa-mouse-pointer text-4xl mb-4 opacity-20"></i>
 
-                    <span class="font-medium">Review Mode</span>
-
-                    <span class="text-gray-300">|</span>
-
-                    <span id="citation-counter" class="bg-gray-100 px-2 py-0.5 rounded text-xs">0 Items</span>
-
-                </div>
-
-                <!-- Future: Filter buttons could go here -->
+                <p>Select a citation from the left to resolve.</p>
 
             </div>
 
 
 
-            <!-- Scrollable List -->
+            <!-- Active Editor (Hidden initially) -->
 
-            <div id="citation-list" class="flex-1 overflow-y-auto p-8 space-y-6 pb-20">
+            <div id="editor-active" class="hidden max-w-3xl mx-auto w-full space-y-6">
 
-                <!-- Empty State -->
+                
 
-                <div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-400">
+                <!-- Original Context -->
 
-                    <i class="fas fa-layer-group text-5xl mb-4 opacity-20"></i>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
 
-                    <p class="text-sm font-medium">Upload a document to begin remediation.</p>
+                    <h3 class="text-xs font-bold text-gray-400 uppercase mb-2">Original Text</h3>
+
+                    <div id="active-original" class="text-gray-800 font-serif italic p-3 bg-gray-50 rounded border border-gray-100"></div>
 
                 </div>
+
+
+
+                <!-- Candidate List -->
+
+                <div>
+
+                    <div class="flex justify-between items-end mb-3">
+
+                        <h3 class="text-xs font-bold text-gray-400 uppercase">Possible Matches</h3>
+
+                        <span class="text-xs text-blue-600 font-medium cursor-pointer hover:underline" onclick="searchCandidates()">
+
+                            <i class="fas fa-sync-alt mr-1"></i> Refresh
+
+                        </span>
+
+                    </div>
+
+                    <div id="candidates-list" class="space-y-3">
+
+                        <!-- Candidates injected here -->
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- Manual Edit Box -->
+
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-blue-200 ring-1 ring-blue-100">
+
+                    <h3 class="text-xs font-bold text-blue-600 uppercase mb-2 flex items-center gap-2">
+
+                        <i class="fas fa-pen"></i> Final Citation Editor
+
+                    </h3>
+
+                    <textarea id="final-edit-area" class="w-full p-3 border border-gray-300 rounded-lg font-serif text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" rows="3"></textarea>
+
+                    
+
+                    <div class="flex gap-3 mt-4">
+
+                        <button onclick="commitChange()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors">
+
+                            <i class="fas fa-check mr-2"></i> Accept & Save
+
+                        </button>
+
+                        <button onclick="appendMode()" class="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors border border-gray-200" title="Add another source">
+
+                            <i class="fas fa-plus mr-1"></i> Append
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+
 
             </div>
 
@@ -276,149 +194,21 @@
 
 
 
-    <!-- About Modal -->
-
-    <div id="about-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
-
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl m-4 p-8 relative">
-
-            <button onclick="toggleAbout()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
-
-                <i class="fas fa-times text-xl"></i>
-
-            </button>
-
-            
-
-            <div class="flex items-center gap-3 mb-6">
-
-                <div class="bg-blue-100 p-3 rounded-full text-blue-600">
-
-                    <i class="fas fa-lightbulb text-xl"></i>
-
-                </div>
-
-                <h2 class="text-2xl font-bold text-gray-900">About CiteFix Pro</h2>
-
-            </div>
-
-
-
-            <div class="prose prose-sm text-gray-600 space-y-4">
-
-                <p>CiteFix Pro is a <strong>deterministic document remediation engine</strong> designed for academic and legal workflows.</p>
-
-                
-
-                <div class="grid grid-cols-2 gap-4 my-6">
-
-                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
-
-                        <h3 class="font-bold text-gray-900 mb-2"><i class="fas fa-random text-blue-500 mr-2"></i>The Router</h3>
-
-                        <p class="text-xs">Detects mixed content (URLs, Books, Legal Cases) within a single footnote and splits them for processing.</p>
-
-                    </div>
-
-                    <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
-
-                        <h3 class="font-bold text-gray-900 mb-2"><i class="fas fa-university text-purple-500 mr-2"></i>Gov Engine</h3>
-
-                        <p class="text-xs">Deterministic mapping of over 50 federal agencies to generate authoritative citations from raw URLs.</p>
-
-                    </div>
-
-                </div>
-
-
-
-                <p>Unlike generative AI, CiteFix does not "guess." It uses strict heuristic rules to identify sources and reformat them into <strong>Chicago Manual of Style (17th Ed.)</strong>, preserving document structure and active hyperlinks.</p>
-
-            </div>
-
-            
-
-            <div class="mt-8 text-right">
-
-                <button onclick="toggleAbout()" class="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800 transition-colors">Got it</button>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-
-    <!-- JavaScript Logic -->
-
     <script>
 
-        // === STATE ===
+        let activeNoteId = null;
 
-        let citations = [];
-
-        let resolvedCount = 0;
+        let currentCitations = [];
 
 
 
-        // === UI ELEMENTS ===
+        // Upload Logic
 
-        const uploadZone = document.getElementById('upload-zone');
-
-        const fileInput = document.getElementById('file-input');
-
-        const citationList = document.getElementById('citation-list');
-
-        const emptyState = document.getElementById('empty-state');
-
-        const downloadBtn = document.getElementById('download-btn');
-
-        const filenameDisplay = document.getElementById('filename-display');
-
-        const statusDisplay = document.getElementById('status-display');
-
-        const statsGrid = document.getElementById('stats-grid');
-
-        const aboutModal = document.getElementById('about-modal');
-
-
-
-        // === INITIALIZATION ===
-
-        // Auto-show about modal on first visit (mock logic)
-
-        // setTimeout(() => toggleAbout(), 500);
-
-
-
-        // === EVENT LISTENERS ===
-
-        uploadZone.addEventListener('click', () => fileInput.click());
-
-        
-
-        fileInput.addEventListener('change', async (e) => {
-
-            if (e.target.files.length === 0) return;
-
-            
-
-            // Loading State
-
-            document.getElementById('upload-content').classList.add('hidden');
-
-            document.getElementById('upload-loading').classList.remove('hidden');
-
-            uploadZone.classList.add('pointer-events-none', 'opacity-50');
-
-            
+        document.getElementById('file-input').addEventListener('change', async (e) => {
 
             const file = e.target.files[0];
 
-            filenameDisplay.innerText = file.name;
-
-            statusDisplay.innerText = "Uploading & Parsing...";
+            if (!file) return;
 
             
 
@@ -428,57 +218,19 @@
 
             
 
-            try {
+            const res = await fetch('/upload', { method: 'POST', body: formData });
 
-                const response = await fetch('/upload', { method: 'POST', body: formData });
+            const data = await res.json();
 
-                const data = await response.json();
+            
 
-                
+            if (data.success) {
 
-                if (data.success) {
+                currentCitations = data.endnotes;
 
-                    statusDisplay.innerText = "Analysis Complete";
+                renderList();
 
-                    citations = data.endnotes;
-
-                    renderWorkbench(citations);
-
-                    
-
-                    // Show stats
-
-                    statsGrid.classList.remove('hidden');
-
-                    document.getElementById('total-citations').innerText = citations.length;
-
-                    downloadBtn.classList.remove('hidden');
-
-                } else {
-
-                    alert('Error: ' + data.error);
-
-                    resetUI();
-
-                }
-
-            } catch (err) {
-
-                console.error(err);
-
-                alert('Upload failed');
-
-                resetUI();
-
-            } finally {
-
-                // Reset Upload Zone visual but keep file loaded text
-
-                document.getElementById('upload-content').classList.remove('hidden');
-
-                document.getElementById('upload-loading').classList.add('hidden');
-
-                uploadZone.classList.remove('pointer-events-none', 'opacity-50');
+                document.getElementById('download-btn').classList.remove('hidden');
 
             }
 
@@ -486,129 +238,27 @@
 
 
 
-        // === CORE UI LOGIC ===
+        function renderList() {
 
-        function toggleAbout() {
+            const list = document.getElementById('citation-list');
 
-            aboutModal.classList.toggle('hidden');
-
-        }
-
-
-
-        function renderWorkbench(notes) {
-
-            citationList.innerHTML = '';
+            list.innerHTML = '';
 
             
 
-            if (notes.length === 0) {
+            currentCitations.forEach(note => {
 
-                citationList.innerHTML = `
+                const div = document.createElement('div');
 
-                    <div class="text-center py-10">
+                div.id = `list-item-${note.id}`;
 
-                        <p class="text-gray-500">No citations found in this document.</p>
+                div.className = 'p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:border-blue-400 transition-all shadow-sm text-sm text-gray-600 truncate font-serif';
 
-                    </div>
+                div.innerText = note.text;
 
-                `;
+                div.onclick = () => openEditor(note.id, note.text);
 
-                return;
-
-            }
-
-
-
-            notes.forEach(note => {
-
-                const card = document.createElement('div');
-
-                card.id = `card-${note.id}`;
-
-                card.className = 'bg-white border border-gray-200 rounded-xl shadow-sm p-0 overflow-hidden transition-all hover:shadow-md group';
-
-                
-
-                // Card Header
-
-                const header = `
-
-                    <div class="bg-gray-50 px-5 py-3 border-b border-gray-100 flex justify-between items-center">
-
-                        <div class="flex items-center gap-2">
-
-                            <span class="bg-white border border-gray-200 text-gray-500 text-[10px] font-mono px-2 py-1 rounded uppercase tracking-wider">ID: ${note.id}</span>
-
-                            <span id="badge-${note.id}" class="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Pending</span>
-
-                        </div>
-
-                        <button onclick="toggleEdit('${note.id}')" class="text-gray-400 hover:text-blue-600 transition-colors opacity-0 group-hover:opacity-100" title="Manual Edit">
-
-                            <i class="fas fa-pencil-alt"></i>
-
-                        </button>
-
-                    </div>
-
-                `;
-
-
-
-                // Card Body
-
-                const body = `
-
-                    <div class="p-5">
-
-                        <!-- Original Text -->
-
-                        <div class="mb-4">
-
-                            <p class="text-xs font-bold text-gray-400 uppercase mb-1">Original Source Text</p>
-
-                            <div class="p-3 bg-gray-50 border border-gray-100 rounded-lg text-gray-700 font-serif text-sm leading-relaxed italic">
-
-                                "${note.text}"
-
-                            </div>
-
-                        </div>
-
-
-
-                        <!-- Result Container (Hidden initially) -->
-
-                        <div id="result-${note.id}" class="hidden"></div>
-
-
-
-                        <!-- Action Bar -->
-
-                        <div id="actions-${note.id}" class="mt-4 flex gap-3">
-
-                            <button onclick="resolveCitation('${note.id}', '${note.text.replace(/'/g, "\\'")}')" 
-
-                                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm">
-
-                                <i class="fas fa-magic"></i> Auto-Resolve
-
-                            </button>
-
-                            <!-- Future: Manual Edit Button implementation -->
-
-                        </div>
-
-                    </div>
-
-                `;
-
-
-
-                card.innerHTML = header + body;
-
-                citationList.appendChild(card);
+                list.appendChild(div);
 
             });
 
@@ -616,147 +266,103 @@
 
 
 
-        // === LOGIC: AUTO RESOLVE ===
+        function openEditor(id, text) {
 
-        async function resolveCitation(id, text) {
+            activeNoteId = id;
 
-            const resultDiv = document.getElementById(`result-${id}`);
+            document.getElementById('editor-empty').classList.add('hidden');
 
-            const actionDiv = document.getElementById(`actions-${id}`);
-
-            const badge = document.getElementById(`badge-${id}`);
+            document.getElementById('editor-active').classList.remove('hidden');
 
             
 
-            // UI Loading
+            document.getElementById('active-original').innerText = text;
 
-            resultDiv.classList.remove('hidden');
+            document.getElementById('final-edit-area').value = text; 
 
-            resultDiv.innerHTML = `
+            
 
-                <div class="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+            document.getElementById('candidates-list').innerHTML = '<div class="loader mx-auto"></div>';
 
-                    <div class="loader"></div>
+            searchCandidates(text);
 
-                    <span class="text-sm text-blue-700 font-medium">Router is analyzing sources...</span>
-
-                </div>
-
-            `;
-
-            actionDiv.classList.add('hidden'); // Hide button while processing
+        }
 
 
 
-            try {
+        async function searchCandidates(queryText = null) {
 
-                // Step 1: Search Router
+            const text = queryText || document.getElementById('active-original').innerText;
 
-                const searchRes = await fetch('/search', {
+            
 
-                    method: 'POST',
+            const res = await fetch('/search', {
 
-                    headers: {'Content-Type': 'application/json'},
+                method: 'POST',
 
-                    body: JSON.stringify({ text: text })
+                headers: {'Content-Type': 'application/json'},
 
-                });
+                body: JSON.stringify({ text: text })
 
-                const searchData = await searchRes.json();
+            });
+
+            const data = await res.json();
+
+            
+
+            const list = document.getElementById('candidates-list');
+
+            list.innerHTML = '';
 
 
 
-                if (searchData.results && searchData.results.length > 0) {
+            if (data.results && data.results.length > 0) {
 
-                    const bestMatch = searchData.results[0];
+                data.results.forEach(cand => {
+
+                    const item = document.createElement('div');
+
+                    item.className = 'bg-white p-3 rounded-lg border border-gray-200 hover:bg-blue-50 cursor-pointer group transition-colors flex justify-between items-center';
+
+                    item.onclick = () => {
+
+                        document.getElementById('final-edit-area').value = cand.formatted;
+
+                    };
 
                     
 
-                    // Step 2: Commit to Document
+                    item.innerHTML = `
 
-                    const updateRes = await fetch('/update', {
+                        <div class="flex-1">
 
-                        method: 'POST',
+                            <div class="flex items-center gap-2 mb-1">
 
-                        headers: {'Content-Type': 'application/json'},
+                                <span class="text-[10px] font-bold uppercase bg-gray-100 text-gray-600 px-2 py-0.5 rounded">${cand.source}</span>
 
-                        body: JSON.stringify({ id: id, html: bestMatch.formatted })
-
-                    });
-
-                    const updateData = await updateRes.json();
-
-
-
-                    if (updateData.success) {
-
-                        // Success State
-
-                        badge.className = 'bg-green-100 text-green-700 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider';
-
-                        badge.innerText = 'Resolved';
-
-                        
-
-                        // Update Counters
-
-                        resolvedCount++;
-
-                        document.getElementById('resolved-count').innerText = resolvedCount;
-
-
-
-                        // Show Result
-
-                        resultDiv.innerHTML = `
-
-                            <div class="animate-fade-in-up">
-
-                                <p class="text-xs font-bold text-gray-400 uppercase mb-1">Formatted Output (Chicago Style)</p>
-
-                                <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
-
-                                    <div class="flex items-center gap-2 mb-2">
-
-                                        <span class="bg-white border border-green-200 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase shadow-sm">
-
-                                            ${bestMatch.source}
-
-                                        </span>
-
-                                    </div>
-
-                                    <p class="text-gray-800 font-serif text-sm leading-relaxed">
-
-                                        ${bestMatch.formatted}
-
-                                    </p>
-
-                                </div>
+                                ${cand.details ? `<span class="text-xs text-gray-400">${cand.details}</span>` : ''}
 
                             </div>
 
-                        `;
+                            <p class="text-sm font-serif text-gray-800">${cand.formatted}</p>
 
-                    }
+                        </div>
 
-                } else {
+                        <button class="text-gray-300 group-hover:text-blue-600 ml-3">
 
-                    // No Match State
+                            <i class="fas fa-arrow-down"></i> Use
 
-                    resultDiv.innerHTML = `<div class="text-sm text-red-500 bg-red-50 p-3 rounded border border-red-100">No confident match found.</div>`;
+                        </button>
 
-                    actionDiv.classList.remove('hidden'); // Show button again
+                    `;
 
-                }
+                    list.appendChild(item);
 
-            } catch (err) {
+                });
 
-                console.error(err);
+            } else {
 
-                resultDiv.innerHTML = `<div class="text-sm text-red-500">System Error</div>`;
-
-                actionDiv.classList.remove('hidden');
+                list.innerHTML = '<div class="text-sm text-gray-400 italic text-center">No matches found.</div>';
 
             }
 
@@ -764,13 +370,35 @@
 
 
 
-        async function resetSession() {
+        async function commitChange() {
 
-            if(confirm('Are you sure? This will clear the current document.')) {
+            const newText = document.getElementById('final-edit-area').value;
 
-                await fetch('/reset', {method: 'POST'});
+            if (!activeNoteId) return;
 
-                window.location.reload();
+
+
+            const res = await fetch('/update', {
+
+                method: 'POST',
+
+                headers: {'Content-Type': 'application/json'},
+
+                body: JSON.stringify({ id: activeNoteId, html: newText })
+
+            });
+
+            const data = await res.json();
+
+            
+
+            if (data.success) {
+
+                const listItem = document.getElementById(`list-item-${activeNoteId}`);
+
+                listItem.className = "p-3 bg-green-50 border border-green-200 rounded-lg cursor-pointer shadow-sm text-sm text-green-800 truncate font-serif";
+
+                listItem.innerHTML = `<i class="fas fa-check mr-2"></i> ${newText}`;
 
             }
 
@@ -778,27 +406,21 @@
 
 
 
-        function resetUI() {
+        function appendMode() {
 
-            filenameDisplay.innerText = "No file loaded";
+            const current = document.getElementById('final-edit-area').value;
 
-            statusDisplay.innerText = "Waiting for upload...";
+            document.getElementById('final-edit-area').value = current + "; ";
 
-            citationList.innerHTML = `
+            document.getElementById('final-edit-area').focus();
 
-                <div id="empty-state" class="flex flex-col items-center justify-center h-full text-gray-400">
+        }
 
-                    <i class="fas fa-layer-group text-5xl mb-4 opacity-20"></i>
 
-                    <p class="text-sm font-medium">Upload a document to begin remediation.</p>
 
-                </div>
+        function downloadDoc() {
 
-            `;
-
-            statsGrid.classList.add('hidden');
-
-            downloadBtn.classList.add('hidden');
+            window.location.href = "/download";
 
         }
 
