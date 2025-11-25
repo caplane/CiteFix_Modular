@@ -1,80 +1,118 @@
-class CitationFormatter:
+"""
+The Newspaper Engine (newspaper.py)
+- Hybrid Strategy:
+  1. Tries to fetch the page and regex-search for Author metadata.
+  2. CRITICAL UPDATE: Always falls back to URL parsing if fetching fails.
+  3. Ensures a valid result is returned even for 404s or blocked sites.
+"""
+
+import requests
+import re
+from datetime import datetime
+from urllib.parse import urlparse
+
+NEWSPAPER_MAP = {
+    'nytimes.com': 'The New York Times',
+    'washingtonpost.com': 'The Washington Post',
+    'wsj.com': 'The Wall Street Journal',
+    'theguardian.com': 'The Guardian',
+    'ft.com': 'Financial Times',
+    'latimes.com': 'Los Angeles Times',
+    'chicagotribune.com': 'Chicago Tribune',
+    'newyorker.com': 'The New Yorker',
+    'theatlantic.com': 'The Atlantic',
+}
+
+def is_newspaper_url(text):
+    """Check if URL matches a known newspaper domain"""
+    if not text: return False
+    try:
+        domain = urlparse(text).netloc.lower().replace('www.', '')
+        for news_domain in NEWSPAPER_MAP:
+            if news_domain in domain:
+                return True
+    except: pass
+    return False
+
+def extract_metadata(url):
+    """
+    Extracts metadata using lightweight regex scraping with strong fallbacks.
+    """
+    domain = urlparse(url).netloc.lower().replace('www.', '')
     
-    @staticmethod
-    def format(metadata, style='chicago'):
-        source_type = metadata.get('type')
-        
-        if style == 'chicago':
-            if source_type == 'government':
-                return CitationFormatter._chicago_gov(metadata)
-            elif source_type == 'book':
-                return CitationFormatter._chicago_book(metadata)
-            elif source_type == 'newspaper': # CRITICAL CHECK
-                return CitationFormatter._chicago_newspaper(metadata)
-            else:
-                return metadata.get('raw_source', '')
-        
-        return metadata.get('raw_source', '')
-
-    # ==================== CHICAGO RULES ====================
-
-    @staticmethod
-    def _chicago_gov(data):
-        agency = data.get('author', '')
-        title = data.get('title', '')
-        date = data.get('access_date', '')
-        url = data.get('url', '')
-        return f'{agency}, "{title}," accessed {date}, {url}.'
-
-    @staticmethod
-    def _chicago_book(data):
-        parts = []
-        authors = data.get('authors', [])
-        if authors:
-            if len(authors) == 1: parts.append(authors[0])
-            elif len(authors) == 2: parts.append(f"{authors[0]} and {authors[1]}")
-            else: parts.append(f"{authors[0]} et al.")
-        
-        title = data.get('title')
-        if title: parts.append(f"<i>{title}</i>")
-        
-        pub_str = ""
-        place = data.get('place')
-        publisher = data.get('publisher')
-        year = data.get('year')
-
-        if place: pub_str += place
-        if publisher:
-            if place: pub_str += f": {publisher}"
-            else: pub_str += publisher
-        if year:
-            if place or publisher: pub_str += f", {year}"
-            else: pub_str += year
-        
-        if pub_str: parts.append(f"({pub_str})")
-        
-        return ", ".join(parts) + "."
-
-    @staticmethod
-    def _chicago_newspaper(data):
-        parts = []
-        
-        if data.get('author'):
-            parts.append(data['author'])
+    # 1. Identify Newspaper
+    pub_name = "Unknown Newspaper"
+    for key, val in NEWSPAPER_MAP.items():
+        if key in domain:
+            pub_name = val
+            break
             
-        title = data.get('title', 'Unknown Title')
-        parts.append(f'"{title}"')
+    # Initialize with default/fallback data derived purely from URL
+    metadata = {
+        'type': 'newspaper',
+        'author': '',
+        'title': 'Article',
+        'newspaper': pub_name,
+        'date': datetime.now().strftime("%B %d, %Y"),
+        'url': url,
+        'access_date': datetime.now().strftime("%B %d, %Y")
+    }
+
+    # 2. Extract Date & Title from URL (The Robust Fallback)
+    # Date logic: Look for /YYYY/MM/DD/ or /YYYY/MM/
+    date_match = re.search(r'/(\d{4})/(\d{2})/', url) # Matches /2026/01/
+    if date_match:
+        y, m = date_match.groups()
+        # Default to 1st of month if day is missing
+        day_match = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', url)
+        d = 1
+        if day_match:
+            d = int(day_match.group(3))
+            
+        try:
+            dt = datetime(int(y), int(m), int(d))
+            metadata['date'] = dt.strftime("%B %d, %Y")
+        except: pass
+    
+    # Title from URL Slug
+    path = urlparse(url).path
+    if path.endswith('/'): path = path[:-1] # Remove trailing slash
+    if path.endswith('.html'): path = path[:-5]
+    
+    slug = path.split('/')[-1]
+    # Convert "sam-shepard-coyote-biography" -> "Sam Shepard Coyote Biography"
+    # Filter out numeric IDs at end of slug if present
+    if slug.isdigit():
+        slug = path.split('/')[-2] # Go up one level if it ends in ID
         
-        newspaper = data.get('newspaper')
-        if newspaper:
-            parts.append(f"<i>{newspaper}</i>")
+    clean_slug = slug.replace('-', ' ').title()
+    if clean_slug:
+        metadata['title'] = clean_slug
+
+    # 3. Attempt Lightweight Scraping for Author (Bonus Step)
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (compatible; CiteFix/1.0)'}
+        response = requests.get(url, headers=headers, timeout=3)
+        
+        if response.status_code == 200:
+            html = response.text
             
-        date = data.get('date')
-        if date:
-            parts.append(date)
+            # Regex search for meta author tag
+            author_match = re.search(r'<meta\s+name=["\'](?:byl|author)["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
             
-        url = data.get('url')
-        if url:
-            parts.append(url)
-            
-        return ", ".join(parts) + "."
+            if author_match:
+                author_text = author_match.group(1)
+                if author_text.lower().startswith("by "):
+                    author_text = author_text[3:]
+                metadata['author'] = author_text
+                
+            # If we got the page, try to get the real title too
+            og_title = re.search(r'<meta\s+property=["\']og:title["\']\s+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+            if og_title:
+                metadata['title'] = og_title.group(1)
+
+    except Exception as e:
+        # If scraping fails, we just silently stick with the URL-derived data
+        print(f"Scraping failed for {url}: {e}")
+
+    return metadata
