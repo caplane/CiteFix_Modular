@@ -1,8 +1,8 @@
 """
-The Newspaper Engine (newspaper.py) - Safe Deployment Version
+The Newspaper Engine (newspaper.py) - Extended Edition
+- Includes 50+ Major US/Intl Sources.
 - Includes 'Archive.org' Backdoor and 'JSON-LD' Parsing.
 - Robust error handling for missing libraries.
-- Strict indentation to prevent syntax errors.
 """
 
 import re
@@ -11,7 +11,7 @@ from datetime import datetime
 try:
     from urllib.parse import urlparse
 except ImportError:
-    from urlparse import urlparse # Python 2 fallback
+    from urlparse import urlparse 
 
 # Check for requests library safely
 try:
@@ -20,22 +20,84 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
-# ==================== DATA: NEWSPAPER MAP ====================
+# ==================== DATA: EXPANDED SOURCE MAP ====================
 
 NEWSPAPER_MAP = {
+    # --- Major US Newspapers ---
     'nytimes.com': 'The New York Times',
     'washingtonpost.com': 'The Washington Post',
     'wsj.com': 'The Wall Street Journal',
-    'theguardian.com': 'The Guardian',
-    'ft.com': 'Financial Times',
+    'usatoday.com': 'USA Today',
     'latimes.com': 'Los Angeles Times',
     'chicagotribune.com': 'Chicago Tribune',
+    'bostonglobe.com': 'The Boston Globe',
+    'sfchronicle.com': 'San Francisco Chronicle',
+    'houstonchronicle.com': 'Houston Chronicle',
+    'dallasnews.com': 'The Dallas Morning News',
+    'miamiherald.com': 'Miami Herald',
+    'seattletimes.com': 'The Seattle Times',
+    'denverpost.com': 'The Denver Post',
+    'inquirer.com': 'The Philadelphia Inquirer',
+    'ajc.com': 'The Atlanta Journal-Constitution',
+    'startribune.com': 'Star Tribune',
+    'nypost.com': 'New York Post',
+    'nydailynews.com': 'New York Daily News',
+    'csmonitor.com': 'The Christian Science Monitor',
+    'baltimoresun.com': 'The Baltimore Sun',
+    'detroitnews.com': 'The Detroit News',
+    'freep.com': 'Detroit Free Press',
+    
+    # --- International & Wires ---
+    'theguardian.com': 'The Guardian',
+    'ft.com': 'Financial Times',
+    'bbc.com': 'BBC News',
+    'reuters.com': 'Reuters',
+    'apnews.com': 'Associated Press',
+    'aljazeera.com': 'Al Jazeera',
+    'economist.com': 'The Economist',
+    'independent.co.uk': 'The Independent',
+    'telegraph.co.uk': 'The Telegraph',
+    'thetimes.co.uk': 'The Times',
+    'cbc.ca': 'CBC News',
+    'scmp.com': 'South China Morning Post',
+
+    # --- Magazines (News, Culture, Politics) ---
     'newyorker.com': 'The New Yorker',
     'theatlantic.com': 'The Atlantic',
+    'time.com': 'Time',
+    'newsweek.com': 'Newsweek',
+    'vanityfair.com': 'Vanity Fair',
+    'harpers.org': 'Harper\'s Magazine',
+    'nymag.com': 'New York Magazine',
+    'rollingstone.com': 'Rolling Stone',
+    'slate.com': 'Slate',
+    'salon.com': 'Salon',
+    'vox.com': 'Vox',
+    'vice.com': 'Vice',
+    'politico.com': 'Politico',
+    'thehill.com': 'The Hill',
+    'motherjones.com': 'Mother Jones',
+    'nationalreview.com': 'National Review',
+    'newrepublic.com': 'The New Republic',
+    'jacobin.com': 'Jacobin',
+    'reason.com': 'Reason',
+
+    # --- Science, Tech & Business ---
+    'wired.com': 'Wired',
+    'theverge.com': 'The Verge',
+    'techcrunch.com': 'TechCrunch',
+    'arstechnica.com': 'Ars Technica',
+    'scientificamerican.com': 'Scientific American',
+    'nationalgeographic.com': 'National Geographic',
+    'popsci.com': 'Popular Science',
+    'psychologytoday.com': 'Psychology Today',
+    'nature.com': 'Nature',
+    'science.org': 'Science',
+    'forbes.com': 'Forbes',
+    'fortune.com': 'Fortune',
+    'businessinsider.com': 'Business Insider',
     'bloomberg.com': 'Bloomberg',
-    'apnews.com': 'Associated Press',
-    'reuters.com': 'Reuters',
-    'bbc.com': 'BBC News'
+    'hbr.org': 'Harvard Business Review'
 }
 
 # ==================== LOGIC: IDENTIFICATION ====================
@@ -106,7 +168,8 @@ def extract_metadata(url):
     replacements = {
         'Ssri': 'SSRI', 'Fda': 'FDA', 'Us': 'US', 'Uk': 'UK', 
         'Ai': 'AI', 'Llm': 'LLM', 'Gpt': 'GPT', 'Dna': 'DNA',
-        'Nyt': 'NYT', 'Wsj': 'WSJ', 'Ceo': 'CEO', 'Cfo': 'CFO'
+        'Nyt': 'NYT', 'Wsj': 'WSJ', 'Ceo': 'CEO', 'Cfo': 'CFO',
+        'Mit': 'MIT', 'Usa': 'USA', 'Nasa': 'NASA'
     }
     for wrong, right in replacements.items():
         clean_slug = re.sub(r'\b' + wrong + r'\b', right, clean_slug)
@@ -142,58 +205,10 @@ def extract_metadata(url):
             html_content = response.text
 
     except Exception:
-        pass # Silently fail back to URL data
+        pass 
 
     # --- PARSING LAYER: JSON-LD & META TAGS ---
     if html_content:
         # 1. Try JSON-LD (Best Source)
         try:
-            json_match = re.search(r'<script type="application/ld\+json">(.*?)</script>', html_content, re.DOTALL)
-            if json_match:
-                data = json.loads(json_match.group(1))
-                if isinstance(data, list): 
-                    if len(data) > 0: data = data[0]
-                    else: data = {}
-                
-                # Extract Author
-                if 'author' in data:
-                    authors = data['author']
-                    if isinstance(authors, list):
-                        names = [p.get('name') for p in authors if isinstance(p, dict) and 'name' in p]
-                        if names: metadata['author'] = " and ".join(names)
-                    elif isinstance(authors, dict):
-                        if 'name' in authors: metadata['author'] = authors['name']
-                
-                # Extract Title
-                if 'headline' in data:
-                    metadata['title'] = data['headline']
-                    
-                # Extract Date
-                if 'datePublished' in data and data['datePublished']:
-                    dp = str(data['datePublished'])[:10]
-                    try:
-                        dt = datetime.strptime(dp, "%Y-%m-%d")
-                        metadata['date'] = dt.strftime("%B %d, %Y")
-                    except: pass
-        except: pass
-
-        # 2. Fallback to Meta Tags
-        if not metadata['author']:
-            try:
-                author_match = re.search(r'<meta\s+name=["\'](?:byl|author|dc.creator|bylines)["\']\s+content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
-                if not author_match:
-                    author_match = re.search(r'<meta\s+property=["\']article:author["\']\s+content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
-
-                if author_match:
-                    author_text = author_match.group(1)
-                    if author_text.lower().startswith("by "):
-                        author_text = author_text[3:]
-                    metadata['author'] = author_text.strip()
-                    
-                og_title = re.search(r'<meta\s+property=["\']og:title["\']\s+content=["\']([^"\']+)["\']', html_content, re.IGNORECASE)
-                if og_title:
-                    real_title = og_title.group(1).split('|')[0].strip()
-                    metadata['title'] = real_title
-            except: pass
-
-    return metadata
+            json_match = re.search(r'
