@@ -1,5 +1,5 @@
 """
-Legal Citation Engine
+Legal Citation Engine (Smart Iteration v2)
 Supports multiple legal case repositories:
     - CourtListener (Free Law Project) - Primary search API
     - Oyez.org - Supreme Court oral arguments
@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 # ==================== DEBUG LOGGING ====================
 
 def debug_log(message):
-    """Print debug info to stderr (visible in Railway logs)"""
+    """Print debug info to stderr (visible in Railway/Terminal logs)"""
     print(f"[COURT.PY DEBUG] {message}", file=sys.stderr, flush=True)
 
 # ==================== API CLASSES ====================
@@ -24,14 +24,12 @@ def debug_log(message):
 class CourtListenerAPI:
     """
     Free Law Project's CourtListener - Primary search API.
-    https://www.courtlistener.com/help/api/rest/v3/case-law/
     """
     BASE_URL = "https://www.courtlistener.com/api/rest/v3/search/"
     
     @staticmethod
     def search(query):
         if not query: 
-            debug_log("Empty query, skipping search")
             return None
             
         params = {'q': query, 'type': 'o', 'order_by': 'score desc', 'format': 'json'}
@@ -39,28 +37,35 @@ class CourtListenerAPI:
         
         try:
             response = requests.get(CourtListenerAPI.BASE_URL, params=params, timeout=10)
-            debug_log(f"CourtListener response status: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
                 results = data.get('results', [])
                 debug_log(f"CourtListener returned {len(results)} results")
                 
-                if results:
-                    first_result = results[0]
-                    # Log the actual field names we receive
-                    debug_log(f"First result keys: {list(first_result.keys())}")
-                    debug_log(f"First result data: {first_result}")
-                    return first_result
-            else:
-                debug_log(f"CourtListener error response: {response.text[:200]}")
+                # === SMART FIX: Iterate to find the best match ===
+                # Don't just take the first result. Take the first one 
+                # that actually has a citation.
+                for result in results[:5]:  # Check top 5 candidates
+                    citations = result.get('citation') or result.get('citations') or []
+                    case_name = result.get('caseName') or result.get('case_name') or ""
+                    
+                    # If we have citations, this is a "real" case (not a docket entry)
+                    if citations:
+                        debug_log(f"Found valid candidate: {case_name} with citations: {citations}")
+                        return result
+                    else:
+                        debug_log(f"Skipping candidate {case_name} (No citations found)")
                 
-        except requests.exceptions.Timeout:
-            debug_log("CourtListener request timed out")
-        except requests.exceptions.RequestException as e:
-            debug_log(f"CourtListener request error: {str(e)}")
+                # Fallback: If no citations found in top 5, return the first one anyway
+                if results:
+                    return results[0]
+
+            else:
+                debug_log(f"CourtListener error response: {response.status_code}")
+                
         except Exception as e:
-            debug_log(f"CourtListener unexpected error: {str(e)}")
+            debug_log(f"CourtListener connection error: {str(e)}")
             
         return None
 
@@ -82,23 +87,13 @@ class OyezAPI:
     def fetch(url):
         case_path = OyezAPI.extract_case_path(url)
         if not case_path:
-            debug_log(f"Could not extract case path from Oyez URL: {url}")
             return None
-            
-        api_url = f"{OyezAPI.BASE_URL}/{case_path}"
-        debug_log(f"Fetching Oyez API: {api_url}")
-        
         try:
-            response = requests.get(api_url, timeout=10)
-            debug_log(f"Oyez response status: {response.status_code}")
-            
+            response = requests.get(f"{OyezAPI.BASE_URL}/{case_path}", timeout=10)
             if response.status_code == 200:
-                data = response.json()
-                debug_log(f"Oyez result keys: {list(data.keys())}")
-                return data
+                return response.json()
         except Exception as e:
             debug_log(f"Oyez error: {str(e)}")
-            
         return None
 
 
@@ -106,145 +101,72 @@ class HarvardCAPAPI:
     """
     Harvard Caselaw Access Project (case.law) - URL handling.
     """
-    
-    @staticmethod
-    def is_cap_url(url):
-        return 'case.law' in url
-    
     @staticmethod
     def extract_citation_from_url(url):
         match = re.search(r'cite\.case\.law/([^/]+)/(\d+)/(\d+)', url)
         if match:
             reporter = match.group(1).upper()
-            volume = match.group(2)
-            page = match.group(3)
-            
+            # Normalize reporter names
             reporter_map = {
-                'US': 'U.S.',
-                'F2D': 'F.2d',
-                'F3D': 'F.3d',
-                'F': 'F.',
-                'FSUPP': 'F. Supp.',
-                'FSUPP2D': 'F. Supp. 2d',
-                'FSUPP3D': 'F. Supp. 3d',
+                'US': 'U.S.', 'F2D': 'F.2d', 'F3D': 'F.3d', 
+                'F': 'F.', 'FSUPP': 'F. Supp.'
             }
             reporter = reporter_map.get(reporter, reporter)
-            
-            return f"{volume} {reporter} {page}"
+            return f"{match.group(2)} {reporter} {match.group(3)}"
         return None
-    
-    @staticmethod
-    def fetch(url):
-        citation = HarvardCAPAPI.extract_citation_from_url(url)
-        if not citation:
-            return None
-        return CourtListenerAPI.search(citation)
 
 
 class JustiaAPI:
     """
-    Justia - URL parsing only (no public API).
+    Justia - URL parsing.
     """
-    
-    @staticmethod
-    def is_justia_url(url):
-        return 'justia.com' in url
-    
     @staticmethod
     def extract_from_url(url):
-        metadata = {
-            'case_name': '',
-            'citation': '',
-            'court': '',
-            'year': '',
-        }
+        metadata = {'case_name': '', 'citation': '', 'court': '', 'year': ''}
         
+        # Pattern: /us/410/113/
         match = re.search(r'/us/(\d+)/(\d+)', url)
         if match:
-            volume, page = match.groups()
-            metadata['citation'] = f"{volume} U.S. {page}"
+            metadata['citation'] = f"{match.group(1)} U.S. {match.group(2)}"
             metadata['court'] = 'Supreme Court of the United States'
             return metadata
-        
+            
+        # Pattern: /federal/appellate-courts/ca5/19-10011/
         match = re.search(r'/(F\d?d?)/(\d+)/(\d+)', url, re.IGNORECASE)
         if match:
-            reporter, volume, page = match.groups()
-            reporter_clean = reporter.upper()
-            if reporter_clean == 'F2' or reporter_clean == 'F2D':
-                reporter_clean = 'F.2d'
-            elif reporter_clean == 'F3' or reporter_clean == 'F3D':
-                reporter_clean = 'F.3d'
-            metadata['citation'] = f"{volume} {reporter_clean} {page}"
+            metadata['citation'] = f"{match.group(2)} {match.group(1).upper()} {match.group(3)}"
             return metadata
-        
         return None
-    
-    @staticmethod
-    def fetch(url):
-        extracted = JustiaAPI.extract_from_url(url)
-        if not extracted or not extracted.get('citation'):
-            return None
-        cl_data = CourtListenerAPI.search(extracted['citation'])
-        if cl_data:
-            return cl_data
-        return extracted
 
 
-# ==================== LEGAL DOMAIN REGISTRY ====================
+# ==================== EXTRACTION LOGIC ====================
 
 LEGAL_DOMAINS = [
-    'courtlistener.com',
-    'oyez.org',
-    'case.law',
-    'cite.case.law',
-    'justia.com',
-    'law.justia.com',
-    'supreme.justia.com',
-    'supremecourt.gov',
-    'uscourts.gov',
-    'law.cornell.edu',
-    'scholar.google.com',
+    'courtlistener.com', 'oyez.org', 'case.law', 'cite.case.law', 
+    'justia.com', 'supremecourt.gov', 'law.cornell.edu', 'scholar.google.com'
 ]
 
-
-# ==================== DETECTION ====================
-
 def is_legal_citation(text):
-    """
-    Check for legal citations or legal website URLs.
-    """
     if not text: return False
     clean = text.strip()
     
-    # 1. Check URLs
     if 'http' in clean:
         for domain in LEGAL_DOMAINS:
-            if domain in clean:
-                debug_log(f"Detected legal URL domain: {domain}")
-                return True
+            if domain in clean: return True
         return False
         
-    # 2. Check for " v. " or " v " pattern
     if re.search(r'\s(v|vs)\.?\s', clean, re.IGNORECASE):
-        debug_log(f"Detected 'v.' pattern in: {clean}")
         return True
         
-    # 3. Check for standard citation format (e.g., "347 U.S. 483")
     if re.search(r'\d+\s+[A-Za-z\.]+\s+\d+', clean):
-        debug_log(f"Detected reporter citation format in: {clean}")
         return True
         
     return False
 
-
-# ==================== EXTRACTION ====================
-
 def extract_metadata(text):
     """
-    Extract legal citation metadata from text or URL.
+    Extract legal citation metadata.
     """
-    debug_log(f"extract_metadata called with: {text}")
-    
     metadata = {
         'type': 'legal',
         'case_name': text,
@@ -257,117 +179,57 @@ def extract_metadata(text):
     
     clean = text.strip()
     
-    # === ROUTE 1: Oyez URL ===
+    # URL Routes
     if 'oyez.org' in clean:
-        debug_log("Routing to Oyez API")
         case_data = OyezAPI.fetch(clean)
         if case_data:
             metadata['case_name'] = case_data.get('name', text)
-            metadata['url'] = clean
-            
-            citation_obj = case_data.get('citation')
-            if citation_obj:
-                volume = citation_obj.get('volume', '')
-                page = citation_obj.get('page', '')
-                if volume and page:
-                    metadata['citation'] = f"{volume} U.S. {page}"
-                    
-            timeline = case_data.get('timeline', [])
-            for event in timeline:
-                if event.get('event') == 'Decided':
-                    dates = event.get('dates', [])
-                    if dates:
-                        ts = dates[0]
-                        if ts:
-                            dt = datetime.datetime.fromtimestamp(ts)
-                            metadata['year'] = str(dt.year)
-                    break
-                    
-            if not metadata['year']:
-                decided = case_data.get('decided', '')
-                if decided:
-                    metadata['year'] = decided[:4]
-                    
-            metadata['court'] = 'Supreme Court of the United States'
-            debug_log(f"Oyez metadata: {metadata}")
+            cit = case_data.get('citation')
+            if cit: metadata['citation'] = f"{cit.get('volume')} U.S. {cit.get('page')}"
+            metadata['year'] = case_data.get('decided', '')[:4]
             return metadata
-    
-    # === ROUTE 2: Harvard CAP (case.law) URL ===
+
     if 'case.law' in clean:
-        debug_log("Routing to Harvard CAP")
-        citation = HarvardCAPAPI.extract_citation_from_url(clean)
-        if citation:
-            metadata['citation'] = citation
-            metadata['url'] = clean
-            
-            cl_data = CourtListenerAPI.search(citation)
+        cit = HarvardCAPAPI.extract_citation_from_url(clean)
+        if cit:
+            metadata['citation'] = cit
+            # Enrich with CourtListener
+            cl_data = CourtListenerAPI.search(cit)
             if cl_data:
                 metadata['case_name'] = cl_data.get('caseName', text)
-                metadata['court'] = cl_data.get('court', '')
-                date_filed = cl_data.get('dateFiled', '')
-                if date_filed:
-                    metadata['year'] = date_filed[:4]
-            debug_log(f"CAP metadata: {metadata}")
+                metadata['year'] = str(cl_data.get('dateFiled', ''))[:4]
             return metadata
-    
-    # === ROUTE 3: Justia URL ===
+
     if 'justia.com' in clean:
-        debug_log("Routing to Justia")
-        extracted = JustiaAPI.extract_from_url(clean)
-        if extracted:
-            metadata['citation'] = extracted.get('citation', '')
-            metadata['court'] = extracted.get('court', '')
-            metadata['url'] = clean
-            
+        ext = JustiaAPI.extract_from_url(clean)
+        if ext:
+            metadata.update({k:v for k,v in ext.items() if v})
+            # Enrich
             if metadata['citation']:
                 cl_data = CourtListenerAPI.search(metadata['citation'])
                 if cl_data:
                     metadata['case_name'] = cl_data.get('caseName', text)
-                    date_filed = cl_data.get('dateFiled', '')
-                    if date_filed:
-                        metadata['year'] = date_filed[:4]
-            debug_log(f"Justia metadata: {metadata}")
+                    metadata['year'] = str(cl_data.get('dateFiled', ''))[:4]
             return metadata
-    
-    # === ROUTE 4: Text Query -> CourtListener ===
-    debug_log("Routing to CourtListener search")
-    
-    # Normalize "v" variations
+
+    # Text Search Route
+    # Normalize 'vs' to 'v.' for better API hits
     search_query = re.sub(r'\bvs\.?\b', 'v.', clean, flags=re.IGNORECASE)
     
     case_data = CourtListenerAPI.search(search_query)
     
     if case_data:
-        # Log what we're trying to extract
-        debug_log(f"Extracting from case_data...")
+        metadata['case_name'] = case_data.get('caseName') or case_data.get('case_name') or text
+        metadata['court'] = case_data.get('court') or case_data.get('court_id') or ''
         
-        # Try both caseName and case_name (API might use either)
-        case_name = case_data.get('caseName') or case_data.get('case_name') or text
-        metadata['case_name'] = case_name
-        debug_log(f"  case_name: {case_name}")
-        
-        # Try both court and court_id
-        court = case_data.get('court') or case_data.get('court_id') or ''
-        metadata['court'] = court
-        debug_log(f"  court: {court}")
-        
-        # Try dateFiled and date_filed
-        date_filed = case_data.get('dateFiled') or case_data.get('date_filed') or ''
+        date_filed = case_data.get('dateFiled') or case_data.get('date_filed')
         if date_filed: 
             metadata['year'] = str(date_filed)[:4]
-        debug_log(f"  dateFiled: {date_filed}")
-        
-        # Citation might be a list or a string
+            
         citations = case_data.get('citation') or case_data.get('citations') or []
-        debug_log(f"  raw citations field: {citations} (type: {type(citations)})")
-        
         if isinstance(citations, list) and citations:
             metadata['citation'] = citations[0]
         elif isinstance(citations, str) and citations:
             metadata['citation'] = citations
-        debug_log(f"  extracted citation: {metadata['citation']}")
-    else:
-        debug_log("CourtListener returned no data")
-    
-    debug_log(f"Final metadata: {metadata}")
+            
     return metadata
