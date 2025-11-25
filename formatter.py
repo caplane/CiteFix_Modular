@@ -1,5 +1,4 @@
-
-"""
+\"""
 The Style Engine (formatter.py)
 Acts as the 'Stylist'.
 - Takes RAW DATA from any engine.
@@ -24,24 +23,25 @@ class CitationFormatter:
         # Placeholder for future styles (APA, MLA)
         return metadata.get('raw_source')
 
-    # ==================== CHICAGO RULES ====================
+    # ==================== CHICAGO RULES (NOTE STYLE) ====================
 
     @staticmethod
     def _chicago_gov(data):
-        # Format: Agency. "Title." Accessed Date. URL.
+        # Format: Agency, "Title," accessed Date, URL.
         agency = data.get('author')
         title = data.get('title')
         date = data.get('access_date')
         url = data.get('url')
         
-        return f'{agency}. "{title}." Accessed {date}. {url}.'
+        # Note style uses commas
+        return f'{agency}, "{title}," accessed {date}, {url}.'
 
     @staticmethod
     def _chicago_book(data):
-        # Format: Author. Title (Italic). (Place: Publisher, Year).
+        # Format: Author, Title (Place: Publisher, Year).
         parts = []
         
-        # Authors
+        # 1. Authors
         authors = data.get('authors', [])
         if authors:
             if len(authors) == 1:
@@ -51,19 +51,35 @@ class CitationFormatter:
             else:
                 parts.append(f"{authors[0]} et al.")
         
-        # Title (Italicized HTML)
+        # 2. Title (Italicized HTML)
         title = data.get('title')
         if title:
             parts.append(f"<i>{title}</i>")
         
-        # Publication Info
-        pub_info = []
-        if data.get('place'): pub_info.append(data.get('place'))
-        if data.get('publisher'): pub_info.append(data.get('publisher'))
-        if data.get('year'): pub_info.append(data.get('year'))
-        
-        if pub_info:
-            parts.append("(" + ", ".join(pub_info) + ")")
-        
-        return ". ".join(parts) + "."
+        # 3. Publication Info: (Place: Publisher, Year)
+        # We need to build the string inside the parentheses carefully
+        pub_str = ""
+        place = data.get('place')
+        publisher = data.get('publisher')
+        year = data.get('year')
 
+        if place:
+            pub_str += place
+        
+        if publisher:
+            if place:
+                pub_str += f": {publisher}" # Colon after place
+            else:
+                pub_str += publisher
+        
+        if year:
+            if place or publisher:
+                pub_str += f", {year}" # Comma before year
+            else:
+                pub_str += year
+        
+        if pub_str:
+            parts.append(f"({pub_str})")
+        
+        # Join main parts with COMMAS, not periods
+        return ", ".join(parts) + "."
