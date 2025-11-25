@@ -1,9 +1,3 @@
-"""
-The Search Router (search.py)
-- Supports returning MULTIPLE candidates.
-- Handles Semicolon splitting for the UI.
-"""
-
 import re
 import government
 import citation
@@ -12,13 +6,47 @@ import formatter
 def search_citation(text, style='chicago'):
     """
     Returns a list of candidate results.
-    Each result has: { formatted, source, confidence, type }
+    Handles Multi-Source Splitting via Semicolons (;).
     """
-    results = []
     clean_text = text.strip()
     
-    # 1. Government / URL Check (Deterministic = 1 Result)
-    urls = re.findall(r'(https?://[^\s]+)', clean_text)
+    # === STRATEGY: MULTI-SOURCE SPLIT ===
+    if ';' in clean_text:
+        segments = clean_text.split(';')
+        resolved_segments = []
+        any_match = False
+        
+        for segment in segments:
+            segment = segment.strip()
+            if not segment: continue
+            
+            # Resolve each segment individually
+            seg_results = resolve_single_segment(segment, style)
+            
+            if seg_results and seg_results[0]['confidence'] != 'low':
+                resolved_segments.append(seg_results[0]['formatted'])
+                any_match = True
+            else:
+                resolved_segments.append(segment)
+        
+        if any_match:
+            composite_string = "; ".join(resolved_segments)
+            return [{
+                'formatted': composite_string,
+                'source': 'Composite Result',
+                'confidence': 'high',
+                'type': 'composite',
+                'details': 'Multiple Sources Detected'
+            }]
+
+    # === STRATEGY: SINGLE SEGMENT ===
+    return resolve_single_segment(clean_text, style)
+
+def resolve_single_segment(text, style):
+    results = []
+    
+    # 1. URL Check (Government)
+    urls = re.findall(r'(https?://[^\s]+)', text)
     if urls:
         for raw_url in urls:
             clean_url = raw_url.rstrip('.,;:)')
@@ -31,20 +59,19 @@ def search_citation(text, style='chicago'):
                     'confidence': 'high',
                     'type': 'government'
                 })
-                return results # Return immediately for Gov docs
+                return results
             
             # Generic URL fallback
             results.append({
-                'formatted': clean_text,
+                'formatted': text,
                 'source': 'Web URL',
                 'confidence': 'medium',
                 'type': 'website'
             })
             return results
 
-    # 2. Book Search (Returns 3 Candidates)
-    candidates = citation.extract_metadata(clean_text)
-    
+    # 2. Book Search
+    candidates = citation.extract_metadata(text)
     for cand in candidates:
         formatted = formatter.CitationFormatter.format(cand, style)
         results.append({
