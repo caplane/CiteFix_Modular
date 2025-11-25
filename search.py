@@ -3,7 +3,7 @@ import government
 import citation
 import formatter
 import newspaper
-import court  
+import court  # <--- NEW IMPORT
 
 def search_citation(text, style='chicago'):
     clean_text = text.strip()
@@ -26,27 +26,20 @@ def search_citation(text, style='chicago'):
                 resolved_segments.append(segment)
         
         if any_match:
-            composite_string = "; ".join(resolved_segments)
-            return [{
-                'formatted': composite_string,
-                'source': 'Composite Result',
-                'confidence': 'high',
-                'type': 'composite',
-                'details': 'Multiple Sources Detected'
-            }]
+            return [{'formatted': "; ".join(resolved_segments), 'source': 'Composite Result', 'confidence': 'high', 'type': 'composite', 'details': 'Multiple Sources Detected'}]
 
     return resolve_single_segment(clean_text, style)
 
 def resolve_single_segment(text, style):
     results = []
     
-    # 1. LEGAL CHECK (Pattern Match)
-    # Checks for " v. " pattern typical of court cases
-    # if court.is_legal_citation(text):
-    #     metadata = court.extract_metadata(text)
-    #     formatted = formatter.CitationFormatter.format(metadata, style)
-    #     results.append({'formatted': formatted, 'source': 'Court Case', 'confidence': 'high', 'type': 'legal'})
-    #     return results
+    # 1. LEGAL CHECK (Highest Priority for "v." strings)
+    if court.is_legal_citation(text):
+        metadata = court.extract_metadata(text)
+        formatted = formatter.CitationFormatter.format(metadata, style)
+        if metadata.get('citation') or metadata.get('case_name') != text:
+             results.append({'formatted': formatted, 'source': 'Court Case', 'confidence': 'high', 'type': 'legal'})
+             return results
 
     # 2. URL CHECK
     urls = re.findall(r'(https?://[^\s]+)', text)
@@ -66,10 +59,16 @@ def resolve_single_segment(text, style):
                 results.append({'formatted': formatted, 'source': metadata.get('newspaper', 'Newspaper'), 'confidence': 'high', 'type': 'newspaper'})
                 return results
             
+            if court.is_legal_citation(clean_url): # Check URL against legal logic
+                 metadata = court.extract_metadata(clean_url)
+                 formatted = formatter.CitationFormatter.format(metadata, style)
+                 results.append({'formatted': formatted, 'source': 'Court Case', 'confidence': 'high', 'type': 'legal'})
+                 return results
+            
             results.append({'formatted': text, 'source': 'Web URL', 'confidence': 'medium', 'type': 'website'})
             return results
 
-    # 3. BOOK SEARCH (Default Fallback)
+    # 3. BOOK SEARCH
     candidates = citation.extract_metadata(text)
     for cand in candidates:
         formatted = formatter.CitationFormatter.format(cand, style)
