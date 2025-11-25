@@ -1,17 +1,12 @@
-
 """
 The Book Engine (citation.py)
-Acts as a 'Specialist'.
-- Knows the Publisher Map.
-- Knows how to talk to Google Books.
-- Extracts Author, Title, Publisher, Year.
-- DOES NOT Format.
+- Now extracts MULTIPLE candidates (Top 3) from Google Books.
 """
 
 import requests
 import re
 
-# ==================== DATA: PUBLISHER MAP ====================
+# ... (PUBLISHER_PLACE_MAP remains the same) ...
 PUBLISHER_PLACE_MAP = {
     'Harvard University Press': 'Cambridge, MA',
     'MIT Press': 'Cambridge, MA',
@@ -46,56 +41,54 @@ class GoogleBooksAPI:
 
     @staticmethod
     def search(query):
-        if not query: return None
+        if not query: return []
         try:
             cleaned_query = GoogleBooksAPI.clean_search_term(query)
-            params = {'q': cleaned_query, 'maxResults': 1, 'printType': 'books', 'orderBy': 'relevance'}
+            # FETCH 3 RESULTS INSTEAD OF 1
+            params = {'q': cleaned_query, 'maxResults': 3, 'printType': 'books', 'orderBy': 'relevance'}
             response = requests.get(GoogleBooksAPI.BASE_URL, params=params, timeout=5)
             if response.status_code == 200:
-                items = response.json().get('items', [])
-                if items:
-                    return items[0] # Return best match
+                return response.json().get('items', [])
         except Exception:
             pass
-        return None
+        return []
 
 def extract_metadata(text):
     """
-    Extracts RAW DATA for a Book.
+    Returns a LIST of metadata dictionaries (Candidates).
     """
-    book_data = GoogleBooksAPI.search(text)
+    items = GoogleBooksAPI.search(text)
+    candidates = []
     
-    if not book_data:
-        return {
-            'type': 'unknown',
-            'raw_source': text
-        }
+    if not items:
+        return []
 
-    info = book_data.get('volumeInfo', {})
-    
-    authors = info.get('authors', [])
-    title = info.get('title', '')
-    if info.get('subtitle'):
-        title = f"{title}: {info.get('subtitle')}"
+    for item in items:
+        info = item.get('volumeInfo', {})
         
-    publisher = info.get('publisher', '')
-    date_str = info.get('publishedDate', '')
-    year = date_str.split('-')[0] if date_str else ''
-    
-    place = ''
-    for pub_name, pub_place in PUBLISHER_PLACE_MAP.items():
-        if pub_name.lower() in publisher.lower():
-            place = pub_place
-            break
+        authors = info.get('authors', [])
+        title = info.get('title', '')
+        if info.get('subtitle'):
+            title = f"{title}: {info.get('subtitle')}"
+            
+        publisher = info.get('publisher', '')
+        date_str = info.get('publishedDate', '')
+        year = date_str.split('-')[0] if date_str else ''
+        
+        place = ''
+        for pub_name, pub_place in PUBLISHER_PLACE_MAP.items():
+            if pub_name.lower() in publisher.lower():
+                place = pub_place
+                break
 
-    # Return PURE DATA dictionary
-    return {
-        'type': 'book',
-        'authors': authors,
-        'title': title,
-        'publisher': publisher,
-        'place': place,
-        'year': year,
-        'raw_source': text
-    }
+        candidates.append({
+            'type': 'book',
+            'authors': authors,
+            'title': title,
+            'publisher': publisher,
+            'place': place,
+            'year': year,
+            'raw_source': text
+        })
 
+    return candidates
