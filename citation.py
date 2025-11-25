@@ -1,12 +1,6 @@
-"""
-The Book Engine (citation.py)
-- Now extracts MULTIPLE candidates (Top 3) from Google Books.
-"""
-
 import requests
 import re
 
-# ... (PUBLISHER_PLACE_MAP remains the same) ...
 PUBLISHER_PLACE_MAP = {
     'Harvard University Press': 'Cambridge, MA',
     'MIT Press': 'Cambridge, MA',
@@ -44,7 +38,6 @@ class GoogleBooksAPI:
         if not query: return []
         try:
             cleaned_query = GoogleBooksAPI.clean_search_term(query)
-            # FETCH 3 RESULTS INSTEAD OF 1
             params = {'q': cleaned_query, 'maxResults': 3, 'printType': 'books', 'orderBy': 'relevance'}
             response = requests.get(GoogleBooksAPI.BASE_URL, params=params, timeout=5)
             if response.status_code == 200:
@@ -54,18 +47,13 @@ class GoogleBooksAPI:
         return []
 
 def extract_metadata(text):
-    """
-    Returns a LIST of metadata dictionaries (Candidates).
-    """
     items = GoogleBooksAPI.search(text)
     candidates = []
     
-    if not items:
-        return []
+    if not items: return []
 
     for item in items:
         info = item.get('volumeInfo', {})
-        
         authors = info.get('authors', [])
         title = info.get('title', '')
         if info.get('subtitle'):
