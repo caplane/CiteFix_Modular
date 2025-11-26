@@ -4,13 +4,12 @@ import citation
 import formatter
 import newspaper
 import court
-import journal  # <--- NEW IMPORT
+import journal 
 
 def search_citation(text, style='chicago'):
     clean_text = text.strip()
     
-    # === STRATEGY: MULTI-SOURCE SPLIT ===
-    # Handles citations like: "See generally, AJP 156 (1999); also Roe v. Wade"
+    # === COMPOSITE CHECK (Handling ";") ===
     if ';' in clean_text:
         segments = clean_text.split(';')
         resolved_segments = []
@@ -20,7 +19,6 @@ def search_citation(text, style='chicago'):
             segment = segment.strip()
             if not segment: continue
             
-            # Pass the requested style down to the segment resolver
             seg_results = resolve_single_segment(segment, style)
             if seg_results and seg_results[0]['confidence'] != 'low':
                 resolved_segments.append(seg_results[0]['formatted'])
@@ -43,54 +41,44 @@ def resolve_single_segment(text, style):
     results = []
     
     # 1. LEGAL CHECK (Priority)
-    # Court cases have distinct formats (v., in re, 345 U.S. 123)
     if court.is_legal_citation(text):
         metadata = court.extract_metadata(text)
         formatted = formatter.CitationFormatter.format(metadata, style)
-        
         has_citation = bool(metadata.get('citation'))
         confidence = 'high' if has_citation else 'medium'
-        details = f"{metadata.get('case_name')} - {metadata.get('citation')}" if has_citation else "Case identified, citation missing"
         
-        legal_result = {
+        results.append({
             'formatted': formatted, 
             'source': 'Court Case', 
             'confidence': confidence, 
             'type': 'legal',
-            'details': details
-        }
-        results.append(legal_result)
-        
-        # Stop if we have a perfect legal hit
-        if confidence == 'high':
-            return results
+            'details': f"{metadata.get('case_name')} - {metadata.get('citation')}"
+        })
+        # If perfect legal match, stop here
+        if confidence == 'high': return results
 
-    # 2. JOURNAL CHECK (High Precision)
-    # Checks for DOIs, Whitelisted Journals (Nature, AJP), or "Vol/No" patterns
-    if journal.is_journal_citation(text):
-        metadata = journal.extract_metadata(text)
-        formatted = formatter.CitationFormatter.format(metadata, style)
+    # 2. JOURNAL CHECK (The New Smart Logic)
+    # We ask the journal engine directly. If it finds nothing, it returns 'Unknown Article'.
+    journal_data = journal.extract_metadata(text)
+    
+    if journal_data.get('title') and journal_data.get('title') != 'Unknown Article':
+        formatted = formatter.CitationFormatter.format(journal_data, style)
         
-        # Determine confidence based on successful DOI resolution or Title match
-        is_solid = bool(metadata.get('title') and metadata.get('title') != "Unknown Article")
-        confidence = 'high' if is_solid else 'medium'
+        # Determine confidence (High if DOI or URL found)
+        is_solid = bool(journal_data.get('doi') or journal_data.get('url'))
         
-        journal_result = {
+        results.append({
             'formatted': formatted, 
-            'source': 'CrossRef / Journal', 
-            'confidence': confidence, 
+            'source': journal_data.get('source_engine', 'Journal API'), 
+            'confidence': 'high' if is_solid else 'medium', 
             'type': 'journal',
-            'details': f"{metadata.get('journal')} ({metadata.get('year')})"
-        }
+            'details': f"{journal_data.get('journal')} ({journal_data.get('year')})"
+        })
         
-        # If we found a real article, return immediately (Journals are specific)
-        if is_solid:
-            return [journal_result]
-        else:
-            results.append(journal_result)
+        # If we found a real article, return immediately
+        if is_solid: return results
 
-    # 3. URL CHECK
-    # Checks for Government (.gov) or Major Newspapers
+    # 3. URL CHECK (Newspapers & Gov)
     urls = re.findall(r'(https?://[^\s]+)', text)
     if urls:
         for raw_url in urls:
@@ -100,10 +88,8 @@ def resolve_single_segment(text, style):
                 metadata = government.extract_metadata(clean_url)
                 formatted = formatter.CitationFormatter.format(metadata, style)
                 results.insert(0, {
-                    'formatted': formatted, 
-                    'source': 'U.S. Government', 
-                    'confidence': 'high', 
-                    'type': 'government'
+                    'formatted': formatted, 'source': 'U.S. Government', 
+                    'confidence': 'high', 'type': 'government'
                 })
                 return results
             
@@ -111,24 +97,12 @@ def resolve_single_segment(text, style):
                 metadata = newspaper.extract_metadata(clean_url)
                 formatted = formatter.CitationFormatter.format(metadata, style)
                 results.insert(0, {
-                    'formatted': formatted, 
-                    'source': metadata.get('newspaper', 'Newspaper'), 
-                    'confidence': 'high', 
-                    'type': 'newspaper'
+                    'formatted': formatted, 'source': metadata.get('newspaper', 'Newspaper'), 
+                    'confidence': 'high', 'type': 'newspaper'
                 })
                 return results
-            
-            # If not caught above, treat as generic website
-            results.append({
-                'formatted': text, 
-                'source': 'Web URL', 
-                'confidence': 'medium', 
-                'type': 'website'
-            })
-            return results
 
     # 4. BOOK SEARCH (Fallback)
-    # Only runs if Legal/Journal didn't return a definitive 'high' match
     candidates = citation.extract_metadata(text)
     for cand in candidates:
         formatted = formatter.CitationFormatter.format(cand, style)
