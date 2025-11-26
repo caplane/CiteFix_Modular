@@ -10,6 +10,7 @@ def search_citation(text, style='chicago'):
     clean_text = text.strip()
     
     # === STRATEGY: MULTI-SOURCE SPLIT ===
+    # Handles citations like: "See generally, AJP 156 (1999); also Roe v. Wade"
     if ';' in clean_text:
         segments = clean_text.split(';')
         resolved_segments = []
@@ -19,6 +20,7 @@ def search_citation(text, style='chicago'):
             segment = segment.strip()
             if not segment: continue
             
+            # Pass the requested style down to the segment resolver
             seg_results = resolve_single_segment(segment, style)
             if seg_results and seg_results[0]['confidence'] != 'low':
                 resolved_segments.append(seg_results[0]['formatted'])
@@ -27,7 +29,13 @@ def search_citation(text, style='chicago'):
                 resolved_segments.append(segment)
         
         if any_match:
-            return [{'formatted': "; ".join(resolved_segments), 'source': 'Composite Result', 'confidence': 'high', 'type': 'composite', 'details': 'Multiple Sources Detected'}]
+            return [{
+                'formatted': "; ".join(resolved_segments), 
+                'source': 'Composite Result', 
+                'confidence': 'high', 
+                'type': 'composite', 
+                'details': 'Multiple Sources Detected'
+            }]
 
     return resolve_single_segment(clean_text, style)
 
@@ -35,6 +43,7 @@ def resolve_single_segment(text, style):
     results = []
     
     # 1. LEGAL CHECK (Priority)
+    # Court cases have distinct formats (v., in re, 345 U.S. 123)
     if court.is_legal_citation(text):
         metadata = court.extract_metadata(text)
         formatted = formatter.CitationFormatter.format(metadata, style)
@@ -81,6 +90,7 @@ def resolve_single_segment(text, style):
             results.append(journal_result)
 
     # 3. URL CHECK
+    # Checks for Government (.gov) or Major Newspapers
     urls = re.findall(r'(https?://[^\s]+)', text)
     if urls:
         for raw_url in urls:
@@ -89,17 +99,32 @@ def resolve_single_segment(text, style):
             if government.is_gov_source(clean_url):
                 metadata = government.extract_metadata(clean_url)
                 formatted = formatter.CitationFormatter.format(metadata, style)
-                results.insert(0, {'formatted': formatted, 'source': 'U.S. Government', 'confidence': 'high', 'type': 'government'})
+                results.insert(0, {
+                    'formatted': formatted, 
+                    'source': 'U.S. Government', 
+                    'confidence': 'high', 
+                    'type': 'government'
+                })
                 return results
             
             if newspaper.is_newspaper_url(clean_url):
                 metadata = newspaper.extract_metadata(clean_url)
                 formatted = formatter.CitationFormatter.format(metadata, style)
-                results.insert(0, {'formatted': formatted, 'source': metadata.get('newspaper', 'Newspaper'), 'confidence': 'high', 'type': 'newspaper'})
+                results.insert(0, {
+                    'formatted': formatted, 
+                    'source': metadata.get('newspaper', 'Newspaper'), 
+                    'confidence': 'high', 
+                    'type': 'newspaper'
+                })
                 return results
             
             # If not caught above, treat as generic website
-            results.append({'formatted': text, 'source': 'Web URL', 'confidence': 'medium', 'type': 'website'})
+            results.append({
+                'formatted': text, 
+                'source': 'Web URL', 
+                'confidence': 'medium', 
+                'type': 'website'
+            })
             return results
 
     # 4. BOOK SEARCH (Fallback)
@@ -116,6 +141,11 @@ def resolve_single_segment(text, style):
         })
         
     if not results:
-        results.append({'formatted': text, 'source': 'No Match', 'confidence': 'low', 'type': 'unknown'})
+        results.append({
+            'formatted': text, 
+            'source': 'No Match', 
+            'confidence': 'low', 
+            'type': 'unknown'
+        })
         
     return results
