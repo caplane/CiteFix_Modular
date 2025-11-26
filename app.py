@@ -4,9 +4,14 @@ import shutil
 import tempfile
 import re
 import json
-from flask import Flask, render_template, request, jsonify, send_file, session
+import requests
+import uuid
+import xml.dom.minidom as minidom
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
 from werkzeug.utils import secure_filename
+from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse, unquote
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'production-key-v19-style-preservation'
@@ -400,7 +405,11 @@ def analyze_citations():
         analysis_results = {
             'total': len(citations),
             'types': {},
-            'confidence_levels': {'high': 0, 'medium': 0, 'low': 0},
+            'confidence_levels': {
+                'high': 0,
+                'medium': 0, 
+                'low': 0
+            },
             'detailed': []
         }
         
