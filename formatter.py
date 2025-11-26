@@ -54,13 +54,11 @@ class CitationFormatter:
         """Smart author formatting based on style rules."""
         if not authors: return ""
         
-        # Simple heuristic to split First/Last if needed
         def split_name(name):
             parts = name.split()
             return (parts[0], " ".join(parts[1:])) if len(parts) > 1 else (name, "")
 
         if style == 'apa':
-            # APA: Last, F. M., & Last, F. M.
             formatted = []
             for name in authors:
                 first, last = split_name(name)
@@ -70,13 +68,12 @@ class CitationFormatter:
             return formatted[0]
 
         elif style == 'mla':
-            # MLA: Last, First, and First Last.
             if len(authors) == 1:
                 first, last = split_name(authors[0])
                 return f"{last}, {first}"
             elif len(authors) == 2:
                 f1, l1 = split_name(authors[0])
-                return f"{l1}, {f1}, and {authors[1]}" # Second author is normal
+                return f"{l1}, {f1}, and {authors[1]}" 
             else:
                 f1, l1 = split_name(authors[0])
                 return f"{l1}, {f1}, et al"
@@ -90,7 +87,6 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_journal(data):
-        # Author, "Title," Journal Vol, no. Issue (Year): Pages.
         parts = []
         if data.get('authors'): parts.append(CitationFormatter._format_authors(data['authors'], 'chicago'))
         if data.get('title'): parts.append(f'"{data["title"]}"')
@@ -127,7 +123,6 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_legal(data):
-        # Case Name, Vol Rep Page (Court Year).
         citation = data.get('citation', '')
         case_name = f"<i>{data.get('case_name', '')}</i>"
         court_year = f"({data.get('court', '')} {data.get('year', '')})".replace('  ', ' ')
@@ -152,26 +147,16 @@ class CitationFormatter:
 
     @staticmethod
     def _bluebook_legal(data):
-        # Case Name, Vol Rep Page (Court Year). 
-        # Note: Bluebook standard technically does NOT italicize case names in footnotes 
-        # unless grammatically part of the sentence, but practitioner standard often does. 
-        # We will use italics for clarity as it's safer.
         citation = data.get('citation', '')
         case_name = f"<i>{data.get('case_name', '')}</i>"
-        
         court = data.get('court', '')
-        # Special logic: If SCOTUS (U.S. report), court name is omitted from parenthetical
         if 'U.S.' in citation and not court: court = '' 
-        
         parenthetical = f"({court} {data.get('year', '')})".replace('  ', ' ').replace('()', '')
-        
         if citation: return f"{case_name}, {citation} {parenthetical}."
         return f"{case_name} {parenthetical}."
 
     @staticmethod
     def _bluebook_journal(data):
-        # Author, Title, Vol Journal Page (Year).
-        # Journal name is Small Caps in Bluebook. We use italics here for web compatibility.
         author = CitationFormatter._format_authors(data.get('authors', []), 'bluebook')
         title = f"<i>{data.get('title', '')}</i>"
         journal = f"{data.get('journal', '')}" 
@@ -179,8 +164,6 @@ class CitationFormatter:
 
     @staticmethod
     def _bluebook_book(data):
-        # Author, Title (Year).
-        # Title is Small Caps. We use ALL CAPS to mimic this.
         author = CitationFormatter._format_authors(data.get('authors', []), 'bluebook')
         title = data.get('title', '').upper()
         return f"{author}, {title} ({data.get('year', '')})."
@@ -189,29 +172,21 @@ class CitationFormatter:
 
     @staticmethod
     def _oscola_legal(data):
-        # Case Name [Year] OR (Year) Vol Report Page (Court).
-        # OSCOLA: Italics for name, no punctuation after name.
         case_name = f"<i>{data.get('case_name', '')}</i>"
         citation = data.get('citation', '')
         court = data.get('court', '')
         year = data.get('year', '')
-
-        # Heuristic: If citation has brackets [], it's neutral/year-based. If not, use parens ().
         year_str = f"({year})" if year else ""
-        
         return f"{case_name} {year_str} {citation} ({court})"
 
     @staticmethod
     def _oscola_journal(data):
-        # Author, 'Title' (Year) Vol Journal Page.
-        # Note: Single quotes for title, no "p" or "pp" for pages.
         author = CitationFormatter._format_authors(data.get('authors', []), 'oscola')
         title = f"'{data.get('title', '')}'"
         return f"{author}, {title} ({data.get('year', '')}) {data.get('volume', '')} {data.get('journal', '')} {data.get('pages', '')}."
 
     @staticmethod
     def _oscola_book(data):
-        # Author, Title (Publisher Year).
         author = CitationFormatter._format_authors(data.get('authors', []), 'oscola')
         title = f"<i>{data.get('title', '')}</i>"
         pub_info = f"({data.get('publisher', '')} {data.get('year', '')})".replace('  ', ' ')
@@ -221,21 +196,17 @@ class CitationFormatter:
 
     @staticmethod
     def _apa_journal(data):
-        # Author, A. A. (Year). Title. Journal, Vol(Issue), Page.
         author = CitationFormatter._format_authors(data.get('authors', []), 'apa')
         year = f"({data.get('year', 'n.d.')})"
         title = data.get('title', '')
-        
         journal = f"<i>{data.get('journal', '')}</i>"
         vol = f"<i>{data.get('volume', '')}</i>"
         issue = f"({data.get('issue', '')})" if data.get('issue') else ""
         pages = data.get('pages', '')
-        
         return f"{author} {year}. {title}. {journal}, {vol}{issue}, {pages}."
 
     @staticmethod
     def _apa_book(data):
-        # Author, A. A. (Year). Title. Publisher.
         author = CitationFormatter._format_authors(data.get('authors', []), 'apa')
         year = f"({data.get('year', 'n.d.')})"
         title = f"<i>{data.get('title', '')}</i>"
@@ -250,23 +221,19 @@ class CitationFormatter:
 
     @staticmethod
     def _mla_journal(data):
-        # Author. "Title." Journal, vol. X, no. X, Year, pp. X-X.
         author = CitationFormatter._format_authors(data.get('authors', []), 'mla')
         title = f'"{data.get("title", "")}."'
         journal = f"<i>{data.get('journal', '')}</i>"
-        
         details = []
         if data.get('volume'): details.append(f"vol. {data['volume']}")
         if data.get('issue'): details.append(f"no. {data['issue']}")
         if data.get('year'): details.append(data['year'])
         if data.get('pages'): details.append(f"pp. {data['pages']}")
-        
         det_str = ", ".join(details)
         return f"{author} {title} {journal}, {det_str}."
 
     @staticmethod
     def _mla_book(data):
-        # Author. Title. Publisher, Year.
         author = CitationFormatter._format_authors(data.get('authors', []), 'mla')
         title = f"<i>{data.get('title', '')}</i>."
         pub = data.get('publisher', '')
