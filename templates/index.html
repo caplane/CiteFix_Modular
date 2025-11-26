@@ -26,9 +26,6 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -40,7 +37,7 @@
             </div>
             <div>
                 <h1 class="text-xl font-bold text-gray-900 tracking-tight">CiteFix <span class="text-blue-600">Pro</span></h1>
-                <p class="text-xs text-gray-500 font-medium">Modular Remediation Engine v2.5</p>
+                <p class="text-xs text-gray-500 font-medium">Modular Remediation Engine v2.4</p>
             </div>
         </div>
         
@@ -92,7 +89,7 @@
                 <p class="text-sm font-medium">Select a citation from the left to resolve.</p>
             </div>
 
-            <div id="editor-active" class="hidden max-w-3xl mx-auto w-full space-y-6 animate-fade-in">
+            <div id="editor-active" class="hidden max-w-3xl mx-auto w-full space-y-6">
                 
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                     <div class="flex justify-between items-center mb-3">
@@ -103,11 +100,22 @@
                 </div>
 
                 <div id="candidates-section">
-                    <div class="flex justify-between items-end mb-3">
+                    <div class="flex justify-between items-center mb-3">
                         <h3 class="text-xs font-bold text-gray-400 uppercase">Proposed Resolutions</h3>
-                        <button onclick="searchCandidates(document.getElementById('active-original').innerText)" class="text-xs text-blue-600 font-medium hover:underline">
-                            <i class="fas fa-sync-alt mr-1"></i> Refresh Search
-                        </button>
+                        
+                        <div class="flex items-center gap-2">
+                            <select id="style-selector" onchange="searchCandidates()" class="text-xs border border-gray-300 rounded bg-white text-gray-600 h-7 px-2 focus:border-blue-500 outline-none cursor-pointer">
+                                <option value="chicago">Chicago (17th)</option>
+                                <option value="bluebook">Bluebook (Law)</option>
+                                <option value="oscola">OSCOLA (UK)</option>
+                                <option value="apa">APA (Psych)</option>
+                                <option value="mla">MLA (Arts)</option>
+                            </select>
+                            
+                            <button onclick="searchCandidates()" class="text-xs text-blue-600 font-medium hover:bg-blue-50 p-1.5 rounded transition-colors" title="Refresh">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
                     </div>
                     <div id="candidates-list" class="space-y-3">
                         </div>
@@ -148,19 +156,16 @@
 
             <div class="prose prose-sm text-gray-600 space-y-4">
                 <p>CiteFix Pro is a <strong>deterministic document remediation engine</strong> designed for historians, legal scholars, and academics.</p>
-                
                 <div class="grid grid-cols-2 gap-4 my-6">
                     <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
                         <h3 class="font-bold text-gray-900 mb-2 text-sm"><i class="fas fa-random text-blue-500 mr-2"></i>The Router</h3>
-                        <p class="text-xs leading-relaxed">Detects mixed content (URLs, Books, Legal Cases) within a single footnote and splits them for parallel processing.</p>
+                        <p class="text-xs leading-relaxed">Detects mixed content (URLs, Journals, Legal Cases) and splits them for parallel processing.</p>
                     </div>
                     <div class="bg-gray-50 p-4 rounded-lg border border-gray-100">
-                        <h3 class="font-bold text-gray-900 mb-2 text-sm"><i class="fas fa-university text-purple-500 mr-2"></i>Extraction Engines</h3>
-                        <p class="text-xs leading-relaxed">Uses deterministic mapping (for Government/Legal) and API queries (for Books) to retrieve authoritative metadata.</p>
+                        <h3 class="font-bold text-gray-900 mb-2 text-sm"><i class="fas fa-university text-purple-500 mr-2"></i>Multi-Style Engine</h3>
+                        <p class="text-xs leading-relaxed">Supports Chicago, Bluebook, OSCOLA, APA, and MLA styles with specialized logic for each format.</p>
                     </div>
                 </div>
-
-                <p>Unlike generative AI, CiteFix uses strict heuristic rules to identify sources and reformat them into <strong>Chicago Manual of Style (17th Ed.)</strong>, preserving your document's structure and active hyperlinks.</p>
             </div>
             
             <div class="mt-8 text-right">
@@ -191,7 +196,7 @@
             if (!file) return;
             
             const loading = document.getElementById('upload-loading');
-            const btn = e.target.parentElement; // The button wrapper
+            const btn = e.target.parentElement;
             
             loading.classList.remove('hidden');
             btn.classList.add('opacity-50', 'pointer-events-none');
@@ -239,35 +244,37 @@
         function loadEditor(note) {
             activeNoteId = note.id;
             
-            // UI State
             document.getElementById('editor-empty').classList.add('hidden');
             document.getElementById('editor-active').classList.remove('hidden');
             
-            // Populate Data
             document.getElementById('active-id').innerText = `ID: ${note.id}`;
             document.getElementById('active-original').innerText = note.text;
-            document.getElementById('final-edit-area').value = note.text; // Default to original
+            document.getElementById('final-edit-area').value = note.text; 
             
-            // Clear candidates and search
-            searchCandidates(note.text);
-        }
-
-        async function searchCandidates(text) {
-            // Force Visual Feedback (Loader) immediately
             document.getElementById('candidates-list').innerHTML = `
                 <div class="flex justify-center py-8">
                     <div class="loader"></div>
                 </div>
             `;
+            searchCandidates(note.text);
+        }
+
+        async function searchCandidates(text = null) {
+            // Logic: If called from dropdown change (text=null), use existing text
+            if (!text && document.getElementById('active-original')) {
+                text = document.getElementById('active-original').innerText;
+            }
+            if (!text) return;
+
+            // NEW: Get the style from the dropdown
+            const style = document.getElementById('style-selector').value;
 
             try {
-                // Add a slight delay (300ms) to ensure visual feedback is perceived
-                await new Promise(r => setTimeout(r, 300));
-
                 const res = await fetch('/search', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ text: text })
+                    // NEW: Send text AND style
+                    body: JSON.stringify({ text: text, style: style })
                 });
                 const data = await res.json();
                 renderCandidates(data.results);
@@ -279,54 +286,32 @@
 
         function renderCandidates(results) {
             const list = document.getElementById('candidates-list');
-            const editArea = document.getElementById('final-edit-area');
             list.innerHTML = '';
 
             if (!results || results.length === 0) {
-                list.innerHTML = `<div class="text-gray-400 text-sm text-center italic py-4">No automated matches found.</div>`;
+                list.innerHTML = `<div class="text-gray-400 text-sm text-center italic py-4">No matches found.</div>`;
                 return;
             }
 
-            // === AUTO-APPLY LOGIC ===
-            // If the top result is "high" confidence, automatically fill the editor
-            if (results[0].confidence === 'high') {
-                editArea.value = results[0].formatted;
-            }
-            // ========================
-
-            results.forEach((cand, index) => {
+            results.forEach(cand => {
                 const item = document.createElement('div');
-                
-                // Highlight if this is the auto-selected item
-                const isAutoSelected = index === 0 && cand.confidence === 'high';
-                const activeClass = isAutoSelected ? 'border-blue-500 ring-1 ring-blue-200 bg-blue-50/50' : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/30';
-
-                item.className = `bg-white p-4 rounded-lg border ${activeClass} cursor-pointer group transition-all`;
-                
+                item.className = 'bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50/30 cursor-pointer group transition-all';
                 item.onclick = () => {
                     document.getElementById('final-edit-area').value = cand.formatted;
-                    
-                    // Update visuals for manual selection
-                    Array.from(list.children).forEach(c => {
-                        c.className = c.className.replace('border-blue-500 ring-1 ring-blue-200 bg-blue-50/50', 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/30');
-                        c.querySelector('.auto-badge')?.classList.add('hidden');
-                    });
-                    
-                    item.className = 'bg-white p-4 rounded-lg border border-blue-500 ring-1 ring-blue-200 bg-blue-50/50 cursor-pointer group transition-all';
                 };
                 
-                // Badge Coloring
+                // Dynamic badge colors
                 let badgeColor = "bg-gray-100 text-gray-600";
                 if (cand.type === 'government') badgeColor = "bg-purple-100 text-purple-700";
                 if (cand.type === 'book') badgeColor = "bg-blue-100 text-blue-700";
-                if (cand.type === 'legal') badgeColor = "bg-amber-100 text-amber-800";
+                if (cand.type === 'journal') badgeColor = "bg-green-100 text-green-700";
+                if (cand.type === 'legal') badgeColor = "bg-amber-100 text-amber-700";
 
                 item.innerHTML = `
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex items-center gap-2">
                             <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded ${badgeColor}">${cand.source}</span>
                             ${cand.details ? `<span class="text-xs text-gray-400 truncate max-w-[200px]">${cand.details}</span>` : ''}
-                            ${isAutoSelected ? '<span class="auto-badge text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded ml-2 flex items-center"><i class="fas fa-magic mr-1"></i>Auto-Applied</span>' : ''}
                         </div>
                         <button class="text-xs font-medium text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity bg-white px-2 py-1 rounded border border-blue-100 shadow-sm">
                             Use This <i class="fas fa-arrow-down ml-1"></i>
@@ -344,7 +329,6 @@
             const btn = document.querySelector('button[onclick="commitChange()"]');
             const originalContent = btn.innerHTML;
 
-            // Optimistic UI update
             btn.innerHTML = `<div class="loader w-4 h-4 border-white border-t-transparent"></div> Saving...`;
             
             try {
@@ -356,19 +340,17 @@
                 const data = await res.json();
                 
                 if (data.success) {
-                    // Update List Item visually
                     const listItem = document.getElementById(`list-item-${activeNoteId}`);
                     listItem.classList.remove('bg-white', 'text-gray-600');
                     listItem.classList.add('bg-green-50', 'text-green-800', 'border-green-200');
                     listItem.innerHTML = `<i class="fas fa-check text-xs mr-2"></i> ${newText}`;
                     
-                    // Button feedback
                     btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
                     btn.classList.add('bg-green-600', 'hover:bg-green-700');
                     btn.innerHTML = `<i class="fas fa-check mr-2"></i> Saved`;
                     
                     setTimeout(() => {
-                        btn.innerHTML = originalContent; // Reset text
+                        btn.innerHTML = originalContent;
                         btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
                         btn.classList.remove('bg-green-600', 'hover:bg-green-700');
                     }, 2000);
@@ -384,7 +366,6 @@
             const area = document.getElementById('final-edit-area');
             area.value = area.value.trim() + "; ";
             area.focus();
-            // Move cursor to end
             area.setSelectionRange(area.value.length, area.value.length);
         }
     </script>
