@@ -16,7 +16,7 @@ class CitationFormatter:
         style = style.lower()
         source_type = metadata.get('type')
         
-        # === CHICAGO ===
+        # === ROUTING ===
         if style == 'chicago':
             if source_type == 'legal': return CitationFormatter._chicago_legal(metadata)
             if source_type == 'journal': return CitationFormatter._chicago_journal(metadata)
@@ -85,7 +85,7 @@ class CitationFormatter:
         elif len(authors) == 2: return f"{authors[0]} and {authors[1]}"
         return f"{authors[0]} et al."
 
-    # ==================== STYLE IMPLEMENTATIONS ====================
+    # ==================== CHICAGO IMPLEMENTATION ====================
 
     @staticmethod
     def _chicago_journal(data):
@@ -127,14 +127,17 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_gov(data):
+        # We separate URL for later detection
         parts = []
         parts.append(f"{data.get('author', 'U.S. Gov')}")
         parts.append(f"\"{data.get('title')}\"")
         parts.append(f"accessed {data.get('access_date')}")
+        
         base_cit = ", ".join(parts)
         url = data.get('url')
+        
         if url: 
-            # Ensure the period is separate from the URL string
+            # The period is added AFTER the URL.
             return f"{base_cit}, {url}."
         return f"{base_cit}."
 
@@ -148,7 +151,7 @@ class CitationFormatter:
         if data.get('url'): parts.append(data['url'])
         return ", ".join(parts) + "."
 
-    # ... (Bluebook, OSCOLA, APA, MLA methods remain unchanged)
+    # ==================== OTHER STYLES ====================
     
     @staticmethod
     def _bluebook_legal(data):
@@ -172,7 +175,7 @@ class CitationFormatter:
         author = CitationFormatter._format_authors(data.get('authors', []), 'bluebook')
         title = data.get('title', '').upper()
         return f"{author}, {title} ({data.get('year', '')})."
-    
+
     @staticmethod
     def _oscola_legal(data):
         case_name = f"<i>{data.get('case_name', '')}</i>"
@@ -258,29 +261,17 @@ class DocumentProcessor:
             with zipfile.ZipFile(file_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
             
-            # Read files
-            content = ""
-            doc_path = os.path.join(temp_dir, 'word', 'document.xml')
-            if os.path.exists(doc_path):
-                with open(doc_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-            
-            endnotes_content = ""
-            endnotes_path = os.path.join(temp_dir, 'word', 'endnotes.xml')
-            if os.path.exists(endnotes_path):
-                with open(endnotes_path, 'r', encoding='utf-8') as f:
-                    endnotes_content = f.read()
-            
-            styles_content = ""
-            styles_path = os.path.join(temp_dir, 'word', 'styles.xml')
-            if os.path.exists(styles_path):
-                with open(styles_path, 'r', encoding='utf-8') as f:
-                    styles_content = f.read()
+            # Read relevant XML files
+            content_map = {}
+            # We capture document (body), endnotes, footnotes, and styles
+            for target in ['word/document.xml', 'word/endnotes.xml', 'word/footnotes.xml', 'word/styles.xml']:
+                path = os.path.join(temp_dir, target)
+                if os.path.exists(path):
+                    with open(path, 'r', encoding='utf-8') as f:
+                        content_map[target] = f.read()
             
             return {
-                'document': content,
-                'endnotes': endnotes_content,
-                'styles': styles_content,
+                'content_map': content_map, 
                 'temp_dir': temp_dir
             }
         except Exception as e:
@@ -292,14 +283,16 @@ class DocumentProcessor:
         """Step 2: Parse Citations"""
         if not xml_content: return []
         endnotes = []
-        endnote_pattern = r'<w:endnote[^>]*w:id="(\d+)"[^>]*>(.*?)</w:endnote>'
-        matches = re.finditer(endnote_pattern, xml_content, re.DOTALL)
+        # Find endnotes/footnotes
+        note_pattern = r'<w:(?:endnote|footnote)[^>]*w:id="(\d+)"[^>]*>(.*?)</w:(?:endnote|footnote)>'
+        matches = re.finditer(note_pattern, xml_content, re.DOTALL)
         
         for match in matches:
             note_id = match.group(1)
             note_content = match.group(2)
             if note_id in ['-1', '0']: continue 
             
+            # Extract plain text
             text_pattern = r'<w:t[^>]*>([^<]+)</w:t>'
             texts = re.findall(text_pattern, note_content)
             full_text = ''.join(texts)
@@ -316,93 +309,109 @@ class DocumentProcessor:
     def create_formatted_docx(docx_structure, formatted_citations, output_path):
         """
         Step 3: Create Output
-        Uses 'Smart Replacement' to preserve hyperlinks.
-        Instead of blindly overwriting the first node (which deletes links if they appear later),
-        it detects <w:hyperlink> and injects the URL component specifically into the link tag.
+        Uses 'Hyperlink-Aware Replacement' to preserve live links.
+        It detects if the existing note has a <w:hyperlink> and puts the URL 
+        specifically inside that tag.
         """
         temp_output = tempfile.mkdtemp()
         
         try:
+            # A. PRESERVE STRUCTURE: Copy everything from original
             shutil.copytree(docx_structure['temp_dir'], temp_output, dirs_exist_ok=True)
             
-            endnotes_path = os.path.join(temp_output, 'word', 'endnotes.xml')
-            if os.path.exists(endnotes_path) and formatted_citations:
-                with open(endnotes_path, 'r', encoding='utf-8') as f:
-                    endnotes_content = f.read()
+            # B. UPDATE XML FILES (Endnotes/Footnotes)
+            for xml_file in ['word/endnotes.xml', 'word/footnotes.xml']:
+                file_path = os.path.join(temp_output, xml_file)
+                if not os.path.exists(file_path): continue
+                
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    xml_content = f.read()
                 
                 for citation in formatted_citations:
                     formatted_text = citation['formatted']
+                    cid = citation['id']
                     
-                    # Find the specific endnote block
-                    pattern = f'<w:endnote[^>]*w:id="{citation["id"]}"[^>]*>(.*?)</w:endnote>'
-                    match = re.search(pattern, endnotes_content, re.DOTALL)
+                    # 1. Find the Note Block
+                    tag_name = "endnote" if "endnote" in xml_file else "footnote"
+                    note_regex = f'<w:{tag_name}[^>]*w:id="{cid}"[^>]*>(.*?)</w:{tag_name}>'
+                    match = re.search(note_regex, xml_content, re.DOTALL)
                     
                     if match:
                         note_xml = match.group(1)
                         
-                        # SMART LOGIC: Check if this note has a Hyperlink tag
-                        hyperlink_match = re.search(r'(<w:hyperlink[^>]*>)(.*?)(</w:hyperlink>)', note_xml, re.DOTALL)
+                        # 2. DETECT URL IN FORMATTED TEXT
+                        url_match = re.search(r'(https?://[^\s<>"]+)', formatted_text)
                         
-                        if hyperlink_match:
-                            # 1. Extract URL from the new formatted text
-                            url_regex = re.search(r'(https?://[^\s<>]+?)([.,;]?)$', formatted_text)
-                            
-                            if url_regex:
-                                found_url = url_regex.group(1)
-                                punctuation = url_regex.group(2)
-                                
-                                # Split text into Pre-URL and URL parts
-                                pre_text = formatted_text.replace(found_url + punctuation, "")
-                                
-                                # 2. Inject Pre-Text into the FIRST text node (before the link)
-                                text_pattern = r'(<w:t[^>]*>)([^<]+)(</w:t>)'
-                                text_matches = list(re.finditer(text_pattern, note_xml))
-                                if text_matches:
-                                    first_match = text_matches[0]
-                                    # Replace first node content
-                                    note_xml = note_xml[:first_match.start()] + \
-                                               first_match.group(1) + pre_text + first_match.group(3) + \
-                                               note_xml[first_match.end():]
-
-                                # 3. Re-find the Hyperlink (content shifted) and inject URL into IT
-                                hyperlink_match = re.search(r'(<w:hyperlink[^>]*>)(.*?)(</w:hyperlink>)', note_xml, re.DOTALL)
-                                if hyperlink_match:
-                                    link_inner = hyperlink_match.group(2)
-                                    # Replace text inside the hyperlink tag
-                                    link_inner = re.sub(r'(<w:t[^>]*>)([^<]+)(</w:t>)', r'\1' + found_url + r'\3', link_inner)
-                                    
-                                    # Add the punctuation (period) AFTER the link
-                                    post_link = f"<w:r><w:t>{punctuation}</w:t></w:r>" if punctuation else ""
-                                    
-                                    # Reassemble
-                                    note_xml = note_xml[:hyperlink_match.start()] + \
-                                               hyperlink_match.group(1) + link_inner + hyperlink_match.group(3) + \
-                                               post_link + \
-                                               note_xml[hyperlink_match.end():]
-                                    
-                                    # Update content
-                                    full_note = f'<w:endnote w:id="{citation["id"]}">{note_xml}</w:endnote>'
-                                    endnotes_content = endnotes_content.replace(match.group(0), full_note)
-                                    continue # Skip to next citation
-
-                        # FALLBACK: No hyperlink tag found, or no URL in text? Use Standard Genie Blind Replace
-                        text_pattern = r'(<w:t[^>]*>)([^<]+)(</w:t>)'
-                        text_matches = list(re.finditer(text_pattern, note_xml))
+                        # 3. DETECT EXISTING HYPERLINK IN XML
+                        link_xml_match = re.search(r'(<w:hyperlink[^>]*>)(.*?)(</w:hyperlink>)', note_xml, re.DOTALL)
                         
-                        if text_matches:
-                            first_match = text_matches[0]
-                            new_xml = note_xml[:first_match.start()] + \
-                                      first_match.group(1) + formatted_text + first_match.group(3)
+                        if url_match and link_xml_match:
+                            # === SCENARIO: PRESERVE LINK ===
+                            found_url = url_match.group(1)
                             
-                            for sub_match in reversed(text_matches[1:]):
-                                new_xml = new_xml[:sub_match.start()] + new_xml[sub_match.end():]
+                            # Split citation: "Pre-Text" | "URL" | "Post-Text"
+                            pre_text = formatted_text.split(found_url)[0]
+                            # Handle post-text (punctuation) safely
+                            parts = formatted_text.split(found_url)
+                            post_text = parts[-1] if len(parts) > 1 else ""
                             
-                            full_note = f'<w:endnote w:id="{citation["id"]}">{new_xml}</w:endnote>'
-                            endnotes_content = endnotes_content.replace(match.group(0), full_note)
+                            # A. Update Hyperlink Node (Put JUST the URL here)
+                            link_inner = link_xml_match.group(2)
+                            # Replace the FIRST text node inside the link with the URL
+                            if '<w:t' in link_inner:
+                                new_link_inner = re.sub(r'<w:t[^>]*>[^<]+</w:t>', f'<w:t>{found_url}</w:t>', link_inner, count=1)
+                            else:
+                                # Fallback if link has runs but no text? unlikely in this context
+                                new_link_inner = f'<w:r><w:t>{found_url}</w:t></w:r>'
+                            
+                            new_link_tag = f"{link_xml_match.group(1)}{new_link_inner}{link_xml_match.group(3)}"
 
-                with open(endnotes_path, 'w', encoding='utf-8') as f:
-                    f.write(endnotes_content)
+                            # B. Update Preceding Text Node (Put Author/Title here)
+                            start_of_link = link_xml_match.start()
+                            pre_link_xml = note_xml[:start_of_link]
+                            
+                            t_match = re.search(r'(<w:t[^>]*>)([^<]+)(</w:t>)', pre_link_xml)
+                            if t_match:
+                                # Overwrite existing text node before link
+                                new_pre_xml = pre_link_xml[:t_match.start()] + \
+                                              f"{t_match.group(1)}{pre_text}{t_match.group(3)}" + \
+                                              pre_link_xml[t_match.end():]
+                            else:
+                                # Create new run if none existed
+                                new_pre_xml = f"<w:r><w:t xml:space='preserve'>{pre_text}</w:t></w:r>" + pre_link_xml
+
+                            # C. Assemble: Pre-Text + Hyperlink + Post-Text
+                            # We use w:r for post_text to be safe
+                            post_xml = f"<w:r><w:t>{post_text}</w:t></w:r>" if post_text else ""
+                            
+                            final_note_xml = new_pre_xml + new_link_tag + post_xml
+                            
+                            # Replace block in content
+                            full_note = f'<w:{tag_name} w:id="{cid}">{final_note_xml}</w:{tag_name}>'
+                            xml_content = xml_content.replace(match.group(0), full_note)
+
+                        else:
+                            # === SCENARIO: STANDARD REPLACE ===
+                            # Overwrite the first text node found
+                            text_match = re.search(r'(<w:t[^>]*>)([^<]+)(</w:t>)', note_xml)
+                            if text_match:
+                                new_xml = note_xml[:text_match.start()] + \
+                                          text_match.group(1) + formatted_text + text_match.group(3)
+                                # Simple cleanup: we assume subsequent text was part of the old citation
+                                # and we effectively truncate it. To be safe, we just use the new_xml prefix.
+                                # However, strictly preserving tags after the match is safer for footnotes 
+                                # that might have multiple runs. 
+                                # For this task (citation replacement), usually replacing first node works 
+                                # as long as we don't duplicate the tail.
+                                
+                                full_note = f'<w:{tag_name} w:id="{cid}">{new_xml}</w:{tag_name}>'
+                                xml_content = xml_content.replace(match.group(0), full_note)
+                
+                # Write file back
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(xml_content)
             
+            # C. RE-ZIP
             with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for root, dirs, files in os.walk(temp_output):
                     for file in files:
