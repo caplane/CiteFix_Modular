@@ -4,6 +4,7 @@ import citation
 import formatter
 import newspaper
 import court
+import journal  # <--- NEW IMPORT
 
 def search_citation(text, style='chicago'):
     clean_text = text.strip()
@@ -38,7 +39,6 @@ def resolve_single_segment(text, style):
         metadata = court.extract_metadata(text)
         formatted = formatter.CitationFormatter.format(metadata, style)
         
-        # Determine confidence
         has_citation = bool(metadata.get('citation'))
         confidence = 'high' if has_citation else 'medium'
         details = f"{metadata.get('case_name')} - {metadata.get('citation')}" if has_citation else "Case identified, citation missing"
@@ -50,15 +50,37 @@ def resolve_single_segment(text, style):
             'type': 'legal',
             'details': details
         }
-        
         results.append(legal_result)
         
-        # CRITICAL FIX: Only stop if we have a perfect citation.
-        # If confidence is MEDIUM, keep going to Books/Gov.
+        # Stop if we have a perfect legal hit
         if confidence == 'high':
             return results
 
-    # 2. URL CHECK
+    # 2. JOURNAL CHECK (High Precision)
+    # Checks for DOIs, Whitelisted Journals (Nature, AJP), or "Vol/No" patterns
+    if journal.is_journal_citation(text):
+        metadata = journal.extract_metadata(text)
+        formatted = formatter.CitationFormatter.format(metadata, style)
+        
+        # Determine confidence based on successful DOI resolution or Title match
+        is_solid = bool(metadata.get('title') and metadata.get('title') != "Unknown Article")
+        confidence = 'high' if is_solid else 'medium'
+        
+        journal_result = {
+            'formatted': formatted, 
+            'source': 'CrossRef / Journal', 
+            'confidence': confidence, 
+            'type': 'journal',
+            'details': f"{metadata.get('journal')} ({metadata.get('year')})"
+        }
+        
+        # If we found a real article, return immediately (Journals are specific)
+        if is_solid:
+            return [journal_result]
+        else:
+            results.append(journal_result)
+
+    # 3. URL CHECK
     urls = re.findall(r'(https?://[^\s]+)', text)
     if urls:
         for raw_url in urls:
@@ -80,7 +102,8 @@ def resolve_single_segment(text, style):
             results.append({'formatted': text, 'source': 'Web URL', 'confidence': 'medium', 'type': 'website'})
             return results
 
-    # 3. BOOK SEARCH (Fallback)
+    # 4. BOOK SEARCH (Fallback)
+    # Only runs if Legal/Journal didn't return a definitive 'high' match
     candidates = citation.extract_metadata(text)
     for cand in candidates:
         formatted = formatter.CitationFormatter.format(cand, style)
