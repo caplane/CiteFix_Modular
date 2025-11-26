@@ -3,14 +3,14 @@ import os
 import zipfile
 import shutil
 import tempfile
+import html
 
 class LeanFormatter:
     """
-    LEAN LINK ACTIVATOR:
-    A specialized class that takes any .docx file and 'activates' plain text URLs.
-    It works by wrapping detected URLs in Word Field Codes (HYPERLINK), 
-    which forces Word to render them as clickable links without needing 
-    complex Relationship (_rels) definitions.
+    LEAN LINK ACTIVATOR (HEAVY ARTILLERY VERSION):
+    Instead of using 'w:fldSimple' (which Word can ignore), this uses 
+    verbose 'w:fldChar' tags. This constructs the link exactly how Word 
+    does internally: [Begin Command] -> [Instruction] -> [Separator] -> [Display Text] -> [End Command].
     """
 
     @staticmethod
@@ -20,11 +20,11 @@ class LeanFormatter:
 
         temp_dir = tempfile.mkdtemp()
         try:
-            # 1. Unzip the DOCX
+            # 1. Unzip
             with zipfile.ZipFile(docx_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
 
-            # 2. Target XML files where citations live
+            # 2. Target XML files
             target_files = ['word/document.xml', 'word/endnotes.xml', 'word/footnotes.xml']
             
             for xml_file in target_files:
@@ -34,75 +34,69 @@ class LeanFormatter:
                 with open(full_path, 'r', encoding='utf-8') as f:
                     content = f.read()
 
-                # 3. The Activation Logic
-                # We look for text nodes <w:t> that contain http/https
-                # AND are NOT already inside a hyperlink or field code.
-                
+                # 3. The Logic
                 def linkify_text(match):
-                    text_content = match.group(2) # The inner text of the <w:t> tag
+                    text_content = match.group(2) 
                     
-                    # Regex to find the URL within the text node
-                    # Matches http(s)://... up to a space, quote, or bracket
+                    # Regex to capture the URL
                     url_match = re.search(r'(https?://[^\s<>"]+)', text_content)
                     
                     if url_match:
                         url = url_match.group(1)
-                        
-                        # Separate potential punctuation (e.g., URL.)
                         clean_url = url.rstrip('.,;)')
                         trailing_punct = url[len(clean_url):]
                         
-                        # Split the text node content into 3 parts: Pre, URL, Post
-                        # Note: This simple split handles the first URL found in the node.
+                        # Escape URL for XML (e.g. & -> &amp;)
+                        safe_url = html.escape(clean_url)
+                        
                         parts = text_content.split(url, 1)
                         pre = parts[0]
                         post = parts[1] if len(parts) > 1 else ""
                         
-                        # BUILD THE FIELD CODE XML
-                        # This tells Word: "This is a HYPERLINK field pointing to clean_url"
-                        field_code = (
-                            f'<w:fldSimple w:instr=" HYPERLINK &quot;{clean_url}&quot; ">'
-                            f'<w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr>'
+                        # --- THE HEAVY ARTILLERY XML ---
+                        # 1. Begin the field
+                        fld_begin = r'<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+                        
+                        # 2. The Instruction (HYPERLINK "url")
+                        # We use xml:space='preserve' to ensure the space after HYPERLINK stays
+                        instr = f'<w:r><w:instrText xml:space="preserve"> HYPERLINK "{safe_url}" </w:instrText></w:r>'
+                        
+                        # 3. Separator (End of instruction, start of what user sees)
+                        fld_sep = r'<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+                        
+                        # 4. The Display Text (Blue & Underlined)
+                        display = (
+                            f'<w:r>'
+                            f'<w:rPr>'
+                            f'<w:rStyle w:val="Hyperlink"/>'
+                            f'<w:color w:val="0000FF"/>'
+                            f'<w:u w:val="single"/>'
+                            f'</w:rPr>'
                             f'<w:t>{clean_url}</w:t>'
                             f'</w:r>'
-                            f'</w:fldSimple>'
                         )
                         
-                        # Reassemble the XML
-                        # We close the original <w:t>, start the field code, then maybe start a new <w:t>
+                        # 5. End the field
+                        fld_end = r'<w:r><w:fldChar w:fldCharType="end"/></w:r>'
                         
-                        # Note: We must return valid run content. 
-                        # Since we are inside a <w:t>, we technically need to close the <w:t> and <w:r> 
-                        # and start new ones, but finding the parent <w:r> via regex is risky.
-                        # SAFE STRATEGY: We assume we are inside a <w:r>. We close it, insert field, open new one.
+                        # Combine it all
+                        full_field_xml = f"{fld_begin}{instr}{fld_sep}{display}{fld_end}"
                         
-                        new_xml = f"{pre}</w:t></w:r>{field_code}<w:r><w:t>{trailing_punct}{post}"
+                        # Reassemble the surrounding text
+                        # Close previous run, insert field block, open new run for punctuation
+                        new_xml = f"{pre}</w:t></w:r>{full_field_xml}<w:r><w:t>{trailing_punct}{post}"
                         
                         return f"{match.group(1)}{new_xml}{match.group(3)}"
                         
                     return match.group(0)
 
-                # We strictly target <w:t> tags to avoid breaking XML structure
-                # We assume standard Word XML structure: <w:r><w:t>TEXT</w:t></w:r>
-                # This regex looks for w:t tags and applies the logic
-                # It includes a check to ensure we aren't already in a hyperlink (rough heuristic)
-                
-                # A robust regex pass:
-                # 1. Find runs <w:r>...<w:t>...</w:t>...</w:r>
-                # 2. Check if they contain http
+                # Process Runs
                 run_pattern = r'(<w:r[^\>]*>)(.*?<w:t[^>]*>.*?<\/w:t>.*?)(<\/w:r>)'
                 
                 def process_run(run_match):
-                    run_open = run_match.group(1)
                     run_inner = run_match.group(2)
-                    run_close = run_match.group(3)
-                    
-                    # Double check: ignore if this run is part of an existing field code or link
-                    # (This context check is hard with simple regex, but 'instr' usually appears in w:fldSimple parent)
-                    
                     if 'HYPERLINK' in run_inner: return run_match.group(0)
-                    
-                    # Find the text node inside this run
+                    if 'w:instrText' in run_inner: return run_match.group(0)
                     return re.sub(r'(<w:t[^>]*>)(.*?)(</w:t>)', linkify_text, run_match.group(0))
 
                 new_content = re.sub(run_pattern, process_run, content, flags=re.DOTALL)
@@ -119,19 +113,9 @@ class LeanFormatter:
                         arcname = os.path.relpath(file_path, temp_dir)
                         zipf.write(file_path, arcname)
             
-            return True, "Links Activated"
+            return True, "Links Activated (Verbose Field Codes)"
 
         except Exception as e:
             return False, str(e)
         finally:
             shutil.rmtree(temp_dir)
-
-# ====================
-# HOW TO INTEGRATE
-# ====================
-# In your main app, after you create the formatted document using the existing logic,
-# run this LeanFormatter on the output file.
-# 
-# Example:
-# create_formatted_docx(..., output_path, ...)
-# LeanFormatter.activate_links(output_path)
