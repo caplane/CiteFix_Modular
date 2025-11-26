@@ -6,7 +6,6 @@ class CitationFormatter:
     def format(metadata, style='chicago'):
         """
         Master Router: Dispatches the citation to the correct style engine.
-        Supported styles: 'chicago', 'bluebook', 'oscola', 'apa', 'mla'.
         """
         style = style.lower()
         source_type = metadata.get('type')
@@ -28,14 +27,14 @@ class CitationFormatter:
             if source_type == 'journal': return CitationFormatter._bluebook_journal(metadata)
             if source_type == 'book': return CitationFormatter._bluebook_book(metadata)
             if source_type == 'interview': return CitationFormatter._chicago_interview(metadata)
-            return CitationFormatter._chicago_gov(metadata) # Fallback
+            return CitationFormatter._chicago_gov(metadata)
 
         # === OSCOLA (UK Law) ===
         elif style == 'oscola':
             if source_type == 'legal': return CitationFormatter._oscola_legal(metadata)
             if source_type == 'journal': return CitationFormatter._oscola_journal(metadata)
             if source_type == 'book': return CitationFormatter._oscola_book(metadata)
-            return CitationFormatter._chicago_gov(metadata) # Fallback
+            return CitationFormatter._chicago_gov(metadata)
 
         # === APA (Psychology/Sciences) ===
         elif style == 'apa':
@@ -52,14 +51,12 @@ class CitationFormatter:
             if source_type == 'interview': return CitationFormatter._mla_interview(metadata)
             return CitationFormatter._mla_generic(metadata)
             
-        # Default Fallback
         return metadata.get('raw_source', '')
 
     # ==================== HELPERS ====================
 
     @staticmethod
     def _format_authors(authors, style='chicago'):
-        """Smart author formatting based on style rules."""
         if not authors: return ""
         if isinstance(authors, str): return authors
         
@@ -99,16 +96,12 @@ class CitationFormatter:
         """
         if not clean_url or not text:
             return text
-            
-        # Escape for regex safety
         escaped_url = re.escape(clean_url)
-        
         # Pattern: The clean URL followed by optional punctuation
         pattern = rf"({escaped_url})[.,;:]"
-        
         return re.sub(pattern, r"\1", text)
 
-    # ==================== 1. CHICAGO STYLE (17th Ed) ====================
+    # ==================== CHICAGO STYLE UPDATES (The Fixes) ====================
 
     @staticmethod
     def _chicago_journal(data):
@@ -123,8 +116,13 @@ class CitationFormatter:
         if data.get('pages'): journal_str += f": {data['pages']}"
         parts.append(journal_str)
         
-        if data.get('doi'): parts.append(f"https://doi.org/{data['doi']}")
-        elif data.get('url'): parts.append(data['url'])
+        # FIX: Check if we are adding a URL/DOI. If so, DO NOT add a trailing period.
+        if data.get('doi'): 
+            parts.append(f"https://doi.org/{data['doi']}")
+            return ", ".join(parts) # No period
+        elif data.get('url'): 
+            parts.append(data['url'].rstrip('.,;:'))
+            return ", ".join(parts) # No period
         
         return ", ".join(parts) + "."
 
@@ -148,11 +146,7 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_legal(data):
-        citation = data.get('citation', '')
-        case_name = f"<i>{data.get('case_name', '')}</i>"
-        court_year = f"({data.get('court', '')} {data.get('year', '')})".replace('  ', ' ')
-        if citation: return f"{case_name}, {citation} {court_year}."
-        return f"{case_name} {court_year}."
+        return f"<i>{data.get('case_name', '')}</i>, {data.get('citation', '')} ({data.get('year', '')})."
 
     @staticmethod
     def _chicago_newspaper(data):
@@ -167,6 +161,7 @@ class CitationFormatter:
         if url:
             clean_url = url.rstrip('.,;:)')
             parts.append(clean_url)
+            return ", ".join(parts) # Return without extra period
             
         return ", ".join(parts) + "."
 
@@ -174,7 +169,8 @@ class CitationFormatter:
     def _chicago_gov(data):
         # URL FIX APPLIED HERE
         url = data.get('url', '').rstrip('.,;:)')
-        return f"{data.get('author', 'U.S. Gov')}, \"{data.get('title')},\" accessed {data.get('access_date')}, {url}."
+        # Ensure we don't add a period after the URL
+        return f"{data.get('author', 'U.S. Gov')}, \"{data.get('title')},\" accessed {data.get('access_date')}, {url}"
 
     @staticmethod
     def _chicago_interview(data):
@@ -205,11 +201,12 @@ class CitationFormatter:
         
         if url:
             clean_url = url.rstrip('.,;:)')
+            # Use the helper to visually fix the text
             return CitationFormatter._clean_url_in_text(text, clean_url)
             
         return text
 
-    # ==================== 2. BLUEBOOK (US Legal) ====================
+    # ==================== OTHER STYLES (Keep existing logic) ====================
 
     @staticmethod
     def _bluebook_legal(data):
@@ -234,8 +231,6 @@ class CitationFormatter:
         title = data.get('title', '').upper()
         return f"{author}, {title} ({data.get('year', '')})."
 
-    # ==================== 3. OSCOLA (UK Legal) ====================
-
     @staticmethod
     def _oscola_legal(data):
         case_name = f"<i>{data.get('case_name', '')}</i>"
@@ -257,8 +252,6 @@ class CitationFormatter:
         title = f"<i>{data.get('title', '')}</i>"
         pub_info = f"({data.get('publisher', '')} {data.get('year', '')})".replace('  ', ' ')
         return f"{author}, {title} {pub_info}."
-
-    # ==================== 4. APA (Psychology) ====================
 
     @staticmethod
     def _apa_journal(data):
@@ -291,8 +284,6 @@ class CitationFormatter:
         bracket = "[Interview]"
         return f"{author} {date}. {title} {bracket}."
 
-    # ==================== 5. MLA (Humanities) ====================
-
     @staticmethod
     def _mla_journal(data):
         author = CitationFormatter._format_authors(data.get('authors', []), 'mla')
@@ -312,17 +303,3 @@ class CitationFormatter:
         title = f"<i>{data.get('title', '')}</i>."
         pub = data.get('publisher', '')
         year = data.get('year', '')
-        return f"{author} {title} {pub}, {year}."
-
-    @staticmethod
-    def _mla_generic(data):
-        return f"{data.get('raw_source', '')}"
-
-    @staticmethod
-    def _mla_interview(data):
-        author = CitationFormatter._format_authors([data.get('interviewee', 'Anonymous')], 'mla')
-        title = f'"{data.get("title", "")}."' if data.get('title') else "Interview."
-        parts = [author, title]
-        if data.get('interviewer'): parts.append(f"Conducted by {data['interviewer']}")
-        if data.get('date'): parts.append(data['date'])
-        return ". ".join(parts) + "."
