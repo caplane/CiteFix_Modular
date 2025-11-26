@@ -1,30 +1,54 @@
-@staticmethod
-    def _chicago_interview(data):
-        # Target: Joh Brown, Interview by author. May 7, 1918.
-        
-        parts = []
-        
-        # 1. Interviewee (Joh Brown)
-        interviewee = data.get('interviewee', '')
-        if interviewee:
-            # Check for "Last, First" and flip it to "First Last" if needed
-            if ',' in interviewee:
-                names = interviewee.split(',')
-                interviewee = f"{names[1].strip()} {names[0].strip()}"
-            parts.append(interviewee)
-        
-        # 2. Descriptor (The Logic Fix)
-        interviewer = data.get('interviewer', '')
-        if interviewer:
-            descriptor = f"Interview by {interviewer}"
+import re
+from datetime import datetime
+
+def is_interview_citation(text):
+    triggers = ['interview', 'oral history', 'personal communication', 'conversation with']
+    return any(t in text.lower() for t in triggers)
+
+def extract_metadata(text):
+    clean_text = text.strip()
+    metadata = {
+        'type': 'interview',
+        'raw_source': text,
+        'interviewee': '',
+        'interviewer': '',
+        'title': '',
+        'date': '',
+        'medium': 'Personal interview'
+    }
+
+    # 1. SMART DATE EXTRACTION
+    slash_date = re.search(r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b', clean_text)
+    word_date = re.search(r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}', clean_text, re.IGNORECASE)
+
+    if slash_date:
+        try:
+            dt = datetime.strptime(slash_date.group(0).replace('-', '/'), "%m/%d/%Y")
+            metadata['date'] = dt.strftime("%B %d, %Y")
+        except:
+            metadata['date'] = slash_date.group(0)
+    elif word_date:
+        metadata['date'] = word_date.group(0).title()
+    else:
+        year_match = re.search(r'\b(19|20)\d{2}\b', clean_text)
+        if year_match: metadata['date'] = year_match.group(0)
+
+    # 2. INTERVIEWER & INTERVIEWEE EXTRACTION
+    complex_match = re.search(r'^([^,]+?)\s+interview\s+with\s+([^,]+)', clean_text, re.IGNORECASE)
+    by_match = re.search(r'interview with\s+([^,]+?)\s+by\s+([^,]+)', clean_text, re.IGNORECASE)
+
+    if complex_match:
+        metadata['interviewer'] = complex_match.group(1).strip().title()
+        metadata['interviewee'] = complex_match.group(2).strip().title()
+    elif by_match:
+        metadata['interviewee'] = by_match.group(1).strip().title()
+        metadata['interviewer'] = by_match.group(2).strip().title()
+    else:
+        simple_match = re.search(r'interview with\s+([^,]+)', clean_text, re.IGNORECASE)
+        if simple_match:
+            metadata['interviewee'] = simple_match.group(1).strip().title()
         else:
-            descriptor = "Interview by author"  # <--- Forces this text when no name is found
-            
-        # Join Name and Descriptor with a COMMA
-        result = f"{parts[0]}, {descriptor}" if parts else descriptor
-        
-        # 3. Date (Add with a PERIOD)
-        if data.get('date'):
-            result += f". {data['date']}"
-            
-        return result + "."
+            parts = re.split(r'\binterview\b', clean_text, flags=re.IGNORECASE)
+            if parts: metadata['interviewee'] = parts[0].strip().title()
+
+    return metadata
