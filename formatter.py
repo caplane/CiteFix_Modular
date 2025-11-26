@@ -1,11 +1,21 @@
 import re
+import os
+import zipfile
+import shutil
+import tempfile
 
 class CitationFormatter:
+    """
+    HANDLES STRING FORMATTING:
+    Converts metadata dictionaries into styled citation strings 
+    (Chicago, Bluebook, APA, MLA, OSCOLA).
+    """
     
     @staticmethod
     def format(metadata, style='chicago'):
         """
         Master Router: Dispatches the citation to the correct style engine.
+        Supported styles: 'chicago', 'bluebook', 'oscola', 'apa', 'mla'.
         """
         style = style.lower()
         source_type = metadata.get('type')
@@ -17,54 +27,51 @@ class CitationFormatter:
             if source_type == 'book': return CitationFormatter._chicago_book(metadata)
             if source_type == 'newspaper': return CitationFormatter._chicago_newspaper(metadata)
             if source_type == 'government': return CitationFormatter._chicago_gov(metadata)
-            if source_type == 'interview': return CitationFormatter._chicago_interview(metadata)
-            # Fallback for generic websites
-            return CitationFormatter._chicago_generic(metadata)
 
         # === BLUEBOOK (US Law) ===
         elif style == 'bluebook':
             if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata)
             if source_type == 'journal': return CitationFormatter._bluebook_journal(metadata)
             if source_type == 'book': return CitationFormatter._bluebook_book(metadata)
-            if source_type == 'interview': return CitationFormatter._chicago_interview(metadata)
-            return CitationFormatter._chicago_gov(metadata)
+            return CitationFormatter._chicago_gov(metadata) # Fallback
 
         # === OSCOLA (UK Law) ===
         elif style == 'oscola':
             if source_type == 'legal': return CitationFormatter._oscola_legal(metadata)
             if source_type == 'journal': return CitationFormatter._oscola_journal(metadata)
             if source_type == 'book': return CitationFormatter._oscola_book(metadata)
-            return CitationFormatter._chicago_gov(metadata)
+            return CitationFormatter._chicago_gov(metadata) # Fallback
 
         # === APA (Psychology/Sciences) ===
         elif style == 'apa':
             if source_type == 'journal': return CitationFormatter._apa_journal(metadata)
             if source_type == 'book': return CitationFormatter._apa_book(metadata)
-            if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata)
-            if source_type == 'interview': return CitationFormatter._apa_interview(metadata)
+            if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata) # APA defers to Bluebook
             return CitationFormatter._apa_generic(metadata)
 
         # === MLA (Humanities) ===
         elif style == 'mla':
             if source_type == 'journal': return CitationFormatter._mla_journal(metadata)
             if source_type == 'book': return CitationFormatter._mla_book(metadata)
-            if source_type == 'interview': return CitationFormatter._mla_interview(metadata)
             return CitationFormatter._mla_generic(metadata)
             
+        # Default Fallback
         return metadata.get('raw_source', '')
 
     # ==================== HELPERS ====================
 
     @staticmethod
     def _format_authors(authors, style='chicago'):
+        """Smart author formatting based on style rules."""
         if not authors: return ""
-        if isinstance(authors, str): return authors
         
+        # Simple heuristic to split First/Last if needed
         def split_name(name):
             parts = name.split()
             return (parts[0], " ".join(parts[1:])) if len(parts) > 1 else (name, "")
 
         if style == 'apa':
+            # APA: Last, F. M., & Last, F. M.
             formatted = []
             for name in authors:
                 first, last = split_name(name)
@@ -74,34 +81,23 @@ class CitationFormatter:
             return formatted[0]
 
         elif style == 'mla':
+            # MLA: Last, First, and First Last.
             if len(authors) == 1:
                 first, last = split_name(authors[0])
                 return f"{last}, {first}"
             elif len(authors) == 2:
                 f1, l1 = split_name(authors[0])
-                return f"{l1}, {f1}, and {authors[1]}"
+                return f"{l1}, {f1}, and {authors[1]}" # Second author is normal
             else:
                 f1, l1 = split_name(authors[0])
                 return f"{l1}, {f1}, et al"
 
+        # Chicago / Bluebook / OSCOLA (First Last)
         if len(authors) == 1: return authors[0]
         elif len(authors) == 2: return f"{authors[0]} and {authors[1]}"
         return f"{authors[0]} et al."
 
-    @staticmethod
-    def _clean_url_in_text(text, clean_url):
-        """
-        Replaces the 'dirty' URL in the text (e.g. 'http://site.com.') 
-        with the 'clean' URL ('http://site.com').
-        """
-        if not clean_url or not text:
-            return text
-        escaped_url = re.escape(clean_url)
-        # Pattern: The clean URL followed by optional punctuation
-        pattern = rf"({escaped_url})[.,;:]"
-        return re.sub(pattern, r"\1", text)
-
-    # ==================== CHICAGO STYLE UPDATES (The Fixes) ====================
+    # ==================== 1. CHICAGO STYLE (17th Ed) ====================
 
     @staticmethod
     def _chicago_journal(data):
@@ -116,13 +112,8 @@ class CitationFormatter:
         if data.get('pages'): journal_str += f": {data['pages']}"
         parts.append(journal_str)
         
-        # FIX: Check if we are adding a URL/DOI. If so, DO NOT add a trailing period.
-        if data.get('doi'): 
-            parts.append(f"https://doi.org/{data['doi']}")
-            return ", ".join(parts) # No period
-        elif data.get('url'): 
-            parts.append(data['url'].rstrip('.,;:'))
-            return ", ".join(parts) # No period
+        if data.get('doi'): parts.append(f"https://doi.org/{data['doi']}")
+        elif data.get('url'): parts.append(data['url'])
         
         return ", ".join(parts) + "."
 
@@ -146,7 +137,15 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_legal(data):
-        return f"<i>{data.get('case_name', '')}</i>, {data.get('citation', '')} ({data.get('year', '')})."
+        citation = data.get('citation', '')
+        case_name = f"<i>{data.get('case_name', '')}</i>"
+        court_year = f"({data.get('court', '')} {data.get('year', '')})".replace('  ', ' ')
+        if citation: return f"{case_name}, {citation} {court_year}."
+        return f"{case_name} {court_year}."
+
+    @staticmethod
+    def _chicago_gov(data):
+        return f"{data.get('author', 'U.S. Gov')}, \"{data.get('title')},\" accessed {data.get('access_date')}, {data.get('url')}."
 
     @staticmethod
     def _chicago_newspaper(data):
@@ -155,58 +154,10 @@ class CitationFormatter:
         parts.append(f'"{data.get("title", "")}"')
         if data.get('newspaper'): parts.append(f"<i>{data['newspaper']}</i>")
         if data.get('date'): parts.append(data['date'])
-        
-        # URL FIX APPLIED HERE
-        url = data.get('url', '')
-        if url:
-            clean_url = url.rstrip('.,;:)')
-            parts.append(clean_url)
-            return ", ".join(parts) # Return without extra period
-            
+        if data.get('url'): parts.append(data['url'])
         return ", ".join(parts) + "."
 
-    @staticmethod
-    def _chicago_gov(data):
-        # URL FIX APPLIED HERE
-        url = data.get('url', '').rstrip('.,;:)')
-        # Ensure we don't add a period after the URL
-        return f"{data.get('author', 'U.S. Gov')}, \"{data.get('title')},\" accessed {data.get('access_date')}, {url}"
-
-    @staticmethod
-    def _chicago_interview(data):
-        parts = []
-        interviewee = data.get('interviewee', '')
-        if interviewee:
-            if ',' in interviewee:
-                names = interviewee.split(',')
-                interviewee = f"{names[1].strip()} {names[0].strip()}"
-            parts.append(interviewee)
-        
-        interviewer = data.get('interviewer', '')
-        if interviewer:
-            descriptor = f"Interview by {interviewer}"
-        else:
-            descriptor = "Interview by author"
-            
-        result = f"{parts[0]}, {descriptor}" if parts else descriptor
-        if data.get('date'):
-            result += f". {data['date']}"
-            
-        return result + "."
-
-    @staticmethod
-    def _chicago_generic(data):
-        text = data.get('raw_source', '')
-        url = data.get('url', '')
-        
-        if url:
-            clean_url = url.rstrip('.,;:)')
-            # Use the helper to visually fix the text
-            return CitationFormatter._clean_url_in_text(text, clean_url)
-            
-        return text
-
-    # ==================== OTHER STYLES (Keep existing logic) ====================
+    # ==================== 2. BLUEBOOK (US Legal) ====================
 
     @staticmethod
     def _bluebook_legal(data):
@@ -231,6 +182,8 @@ class CitationFormatter:
         title = data.get('title', '').upper()
         return f"{author}, {title} ({data.get('year', '')})."
 
+    # ==================== 3. OSCOLA (UK Legal) ====================
+
     @staticmethod
     def _oscola_legal(data):
         case_name = f"<i>{data.get('case_name', '')}</i>"
@@ -252,6 +205,8 @@ class CitationFormatter:
         title = f"<i>{data.get('title', '')}</i>"
         pub_info = f"({data.get('publisher', '')} {data.get('year', '')})".replace('  ', ' ')
         return f"{author}, {title} {pub_info}."
+
+    # ==================== 4. APA (Psychology) ====================
 
     @staticmethod
     def _apa_journal(data):
@@ -275,14 +230,8 @@ class CitationFormatter:
     @staticmethod
     def _apa_generic(data):
         return f"{data.get('raw_source', '')}"
-    
-    @staticmethod
-    def _apa_interview(data):
-        author = CitationFormatter._format_authors([data.get('interviewee', 'Anonymous')], 'apa')
-        date = f"({data.get('date', 'n.d.')})"
-        title = data.get('title', 'Interview')
-        bracket = "[Interview]"
-        return f"{author} {date}. {title} {bracket}."
+
+    # ==================== 5. MLA (Humanities) ====================
 
     @staticmethod
     def _mla_journal(data):
@@ -309,11 +258,130 @@ class CitationFormatter:
     def _mla_generic(data):
         return f"{data.get('raw_source', '')}"
 
-    @staticmethod
-    def _mla_interview(data):
-        author = CitationFormatter._format_authors([data.get('interviewee', 'Anonymous')], 'mla')
-        title = f'"{data.get("title", "")}."' if data.get('title') else "Interview."
-        parts = [author, title]
-        if data.get('interviewer'): parts.append(f"Conducted by {data['interviewer']}")
-        if data.get('date'): parts.append(data['date'])
-        return ". ".join(parts) + "."
+
+class DocxLinkPreserver:
+    """
+    HANDLES FILE MANIPULATION:
+    Processes the raw DOCX structure to fix broken URLs that span multiple lines.
+    This mimics the logic used in Incipit Genie (direct XML editing).
+    """
+
+    def __init__(self):
+        # Regex to find URLs split by a hyphen and a newline/space
+        # Matches: "http://...management-" + whitespace + "plan"
+        self.url_split_pattern = r'(https?://[^\s<>"]+)-\s+([^\s<>"]+)'
+        
+        # Regex to find URLs split by just whitespace
+        # Matches: "http://...management" + whitespace + "/plan"
+        self.url_break_pattern = r'(https?://[^\s<>"]+)\s+(\/[^\s<>"]+)'
+
+    def clean_text_content(self, text):
+        """
+        Fixes broken URLs in a plain text string.
+        """
+        # Fix hyphenated breaks
+        text = re.sub(self.url_split_pattern, r'\1\2', text)
+        # Fix whitespace breaks
+        text = re.sub(self.url_break_pattern, r'\1\2', text)
+        return text
+
+    def _stitch_xml_nodes(self, xml_content):
+        """
+        Core logic to find split text nodes in endnotes/footnotes
+        and stitch them back together without breaking surrounding tags.
+        """
+        # Pattern to find endnotes or footnotes blocks
+        # We capture the ID to ensure we process distinct notes
+        note_pattern = r'(<w:endnote[^>]*w:id="(\d+)"[^>]*>)(.*?)(</w:endnote>)'
+        
+        def replace_note_content(match):
+            open_tag = match.group(1)
+            # note_id = match.group(2) # Unused but available for debugging
+            inner_xml = match.group(3)
+            close_tag = match.group(4)
+
+            # 1. Extract all text nodes <w:t> from this specific note
+            text_node_pattern = r'(<w:t[^>]*>)([^<]+)(</w:t>)'
+            text_matches = list(re.finditer(text_node_pattern, inner_xml))
+
+            if not text_matches:
+                return match.group(0)
+
+            # 2. Join all text parts to form one cohesive string
+            full_text = "".join([m.group(2) for m in text_matches])
+            
+            # 3. Apply the URL Fixer
+            cleaned_text = self.clean_text_content(full_text)
+
+            # 4. Reconstruction:
+            # Inject clean text into the FIRST text node.
+            # Delete subsequent text nodes (the fragments).
+            # Preserve all non-text XML (formatting tags, runs, etc).
+            
+            first_match = text_matches[0]
+            
+            # Start of inner XML (before the first text)
+            new_inner_xml = inner_xml[:first_match.start()]
+            
+            # The consolidated text node
+            new_inner_xml += f"{first_match.group(1)}{cleaned_text}{first_match.group(3)}"
+            
+            # Append remaining XML, skipping the text nodes we just merged
+            last_end = first_match.end()
+            for next_match in text_matches[1:]:
+                # Append content between the previous match and this one
+                new_inner_xml += inner_xml[last_end:next_match.start()]
+                last_end = next_match.end()
+            
+            # Append remaining XML after the last text node
+            new_inner_xml += inner_xml[last_end:]
+
+            return f"{open_tag}{new_inner_xml}{close_tag}"
+
+        # Apply the replacement function
+        return re.sub(note_pattern, replace_note_content, xml_content, flags=re.DOTALL)
+
+    def process_document(self, input_path, output_path=None):
+        """
+        Main entry point for file processing.
+        Unzips DOCX, repairs XML, Rezips.
+        """
+        if output_path is None:
+            output_path = input_path
+
+        temp_dir = tempfile.mkdtemp()
+        
+        try:
+            # 1. Unzip
+            with zipfile.ZipFile(input_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir)
+
+            # 2. Process Endnotes and Footnotes
+            target_files = ['word/endnotes.xml', 'word/footnotes.xml']
+            
+            for target in target_files:
+                full_path = os.path.join(temp_dir, target)
+                if os.path.exists(full_path):
+                    with open(full_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Apply stitching logic
+                    new_content = self._stitch_xml_nodes(content)
+                    
+                    with open(full_path, 'w', encoding='utf-8') as f:
+                        f.write(new_content)
+
+            # 3. Re-zip
+            with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, temp_dir)
+                        zipf.write(file_path, arcname)
+            
+            return True, "Links successfully preserved."
+
+        except Exception as e:
+            return False, f"Error processing links: {str(e)}"
+        finally:
+            shutil.rmtree(temp_dir)
