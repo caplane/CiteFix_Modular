@@ -213,3 +213,233 @@ def apply_citation_style(citations, style='chicago'):
         citation_info['id'] = citation['id']
         
         if style == 'chicago':
+            formatted_text = format_citation_cms(citation_info, 'note')
+        else:
+            formatted_text = citation['text']
+        
+        formatted_citations.append({
+            'id': citation['id'],
+            'original': citation['text'],
+            'formatted': formatted_text,
+            'type': citation_info['type'],
+            'confidence': citation_info.get('confidence', 0)
+        })
+    
+    return formatted_citations
+
+def create_formatted_docx(original_path, formatted_citations, output_path, docx_structure):
+    """Create new DOCX with formatted citations"""
+    temp_output = tempfile.mkdtemp()
+    
+    try:
+        shutil.copytree(docx_structure['temp_dir'], temp_output, dirs_exist_ok=True)
+        endnotes_path = os.path.join(temp_output, 'word', 'endnotes.xml')
+        
+        if os.path.exists(endnotes_path) and formatted_citations:
+            with open(endnotes_path, 'r', encoding='utf-8') as f:
+                endnotes_content = f.read()
+            
+            for citation in formatted_citations:
+                pattern = f'<w:endnote[^>]*w:id="{citation["id"]}"[^>]*>(.*?)</w:endnote>'
+                match = re.search(pattern, endnotes_content, re.DOTALL)
+                
+                if match:
+                    note_xml = match.group(1)
+                    text_pattern = r'(<w:t[^>]*>)([^<]+)(</w:t>)'
+                    text_matches = list(re.finditer(text_pattern, note_xml))
+                    
+                    if text_matches:
+                        formatted_text = citation['formatted']
+                        first_match = text_matches[0]
+                        # Replace text in the first node
+                        new_xml = note_xml[:first_match.start()] + \
+                                 first_match.group(1) + formatted_text + first_match.group(3)
+                        
+                        # Remove subsequent text nodes for this note
+                        for match in reversed(text_matches[1:]):
+                            new_xml = new_xml[:match.start()] + new_xml[match.end():]
+                        
+                        full_note = f'<w:endnote w:id="{citation["id"]}">{new_xml}</w:endnote>'
+                        endnotes_content = endnotes_content.replace(match.group(0), full_note)
+            
+            with open(endnotes_path, 'w', encoding='utf-8') as f:
+                f.write(endnotes_content)
+        
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(temp_output):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, temp_output)
+                    zipf.write(file_path, arcname)
+        
+        return True
+        
+    finally:
+        shutil.rmtree(temp_output, ignore_errors=True)
+        if docx_structure.get('temp_dir'):
+            shutil.rmtree(docx_structure['temp_dir'], ignore_errors=True)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type. Only .docx files are allowed'}), 400
+    
+    filename = secure_filename(file.filename)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{timestamp}_{filename}"
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(file_path)
+    
+    try:
+        docx_structure = extract_docx_structure(file_path)
+        citations = parse_citations(docx_structure['endnotes'])
+        
+        session['current_file'] = file_path
+        session['original_filename'] = file.filename
+        session['docx_structure'] = {
+            'document': docx_structure['document'][:1000],
+            'endnotes': docx_structure['endnotes'][:1000],
+            'has_endnotes': bool(citations)
+        }
+        
+        if docx_structure.get('temp_dir'):
+            shutil.rmtree(docx_structure['temp_dir'], ignore_errors=True)
+        
+        citation_analysis = []
+        for citation in citations[:10]:
+            analysis = identify_citation_type(citation['text'])
+            citation_analysis.append({
+                'id': citation['id'],
+                'text': citation['text'][:200] + '...' if len(citation['text']) > 200 else citation['text'],
+                'type': analysis['type'],
+                'confidence': analysis['confidence']
+            })
+        
+        return jsonify({
+            'success': True,
+            'filename': file.filename,
+            'total_citations': len(citations),
+            'preview': citation_analysis
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/format', methods=['POST'])
+def format_citations():
+    data = request.json
+    style = data.get('style', 'chicago')
+    
+    if 'current_file' not in session:
+        return jsonify({'error': 'No file uploaded'}), 400
+    
+    file_path = session['current_file']
+    
+    try:
+        docx_structure = extract_docx_structure(file_path)
+        citations = parse_citations(docx_structure['endnotes'])
+        formatted_citations = apply_citation_style(citations, style)
+        
+        output_filename = f"formatted_{style}_{session.get('original_filename', 'document.docx')}"
+        output_path = os.path.join(UPLOAD_FOLDER, output_filename)
+        
+        create_formatted_docx(file_path, formatted_citations, output_path, docx_structure)
+        
+        session['output_file'] = output_path
+        session['output_filename'] = output_filename
+        
+        return jsonify({
+            'success': True,
+            'formatted_count': len(formatted_citations),
+            'download_ready': True
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/download')
+def download_formatted():
+    if 'output_file' not in session:
+        return jsonify({'error': 'No formatted file available'}), 400
+    
+    output_path = session['output_file']
+    output_filename = session.get('output_filename', 'formatted_document.docx')
+    
+    if not os.path.exists(output_path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    return send_file(
+        output_path,
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        as_attachment=True,
+        download_name=output_filename
+    )
+
+@app.route('/analyze', methods=['POST'])
+def analyze_citations():
+    if 'current_file' not in session:
+        return jsonify({'error': 'No file uploaded'}), 400
+    
+    file_path = session['current_file']
+    
+    try:
+        docx_structure = extract_docx_structure(file_path)
+        citations = parse_citations(docx_structure['endnotes'])
+        
+        analysis_results = {
+            'total': len(citations),
+            'types': {},
+            'confidence_levels': {'high': 0, 'medium': 0, 'low': 0},
+            'detailed': []
+        }
+        
+        for citation in citations:
+            analysis = identify_citation_type(citation['text'])
+            cit_type = analysis['type']
+            analysis_results['types'][cit_type] = analysis_results['types'].get(cit_type, 0) + 1
+            
+            conf = analysis['confidence']
+            if conf >= 0.8:
+                analysis_results['confidence_levels']['high'] += 1
+            elif conf >= 0.6:
+                analysis_results['confidence_levels']['medium'] += 1
+            else:
+                analysis_results['confidence_levels']['low'] += 1
+            
+            analysis_results['detailed'].append({
+                'id': citation['id'],
+                'type': cit_type,
+                'confidence': conf,
+                'components': analysis.get('components', {})
+            })
+        
+        if docx_structure.get('temp_dir'):
+            shutil.rmtree(docx_structure['temp_dir'], ignore_errors=True)
+        
+        return jsonify(analysis_results)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/clear', methods=['POST'])
+def clear_session():
+    if 'current_file' in session and os.path.exists(session['current_file']):
+        os.remove(session['current_file'])
+    if 'output_file' in session and os.path.exists(session['output_file']):
+        os.remove(session['output_file'])
+    session.clear()
+    return jsonify({'success': True})
+
+if __name__ == '__main__':
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
