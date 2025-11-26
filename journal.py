@@ -5,7 +5,10 @@ import re
 
 class CrossRefAPI:
     BASE_URL = "https://api.crossref.org/works"
-    HEADERS = {'User-Agent': 'IncipitGenie/2.0 (mailto:admin@example.com)'}
+    # FIX: Use a standard Browser Header to avoid being blocked
+    HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
 
     @staticmethod
     def get_by_doi(doi):
@@ -32,8 +35,10 @@ class CrossRefAPI:
 
 class SemanticScholarAPI:
     BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
-    # FIX: Define Headers here too so we don't get blocked
-    HEADERS = {'User-Agent': 'IncipitGenie/2.0 (mailto:admin@example.com)'}
+    # FIX: Use the same "Real Browser" header here
+    HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
 
     @staticmethod
     def search_fuzzy(query):
@@ -43,13 +48,13 @@ class SemanticScholarAPI:
                 'limit': 1,
                 'fields': 'title,authors,venue,year,volume,issue,pages,externalIds'
             }
-            # FIX: Added headers=SemanticScholarAPI.HEADERS below
             response = requests.get(SemanticScholarAPI.BASE_URL, params=params, headers=SemanticScholarAPI.HEADERS, timeout=5)
             
             if response.status_code == 200:
                 data = response.json()
                 if data.get('total', 0) > 0:
                     return data['data'][0]
+            # Debug: If you want to verify failure, you could print(response.status_code) here locally
             return None
         except: return None
 
