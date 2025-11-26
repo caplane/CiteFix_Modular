@@ -6,99 +6,110 @@ import tempfile
 
 class LeanFormatter:
     """
-    A specialized formatter that prioritizes URL preservation above all else.
-    It separates the URL from the citation text and injects them into 
-    separate XML containers (Text Run vs Hyperlink Run).
+    LEAN LINK ACTIVATOR:
+    A specialized class that takes any .docx file and 'activates' plain text URLs.
+    It works by wrapping detected URLs in Word Field Codes (HYPERLINK), 
+    which forces Word to render them as clickable links without needing 
+    complex Relationship (_rels) definitions.
     """
 
     @staticmethod
-    def format_document(file_path, citation_text, output_path=None):
+    def activate_links(docx_path, output_path=None):
         if output_path is None:
-            output_path = file_path
+            output_path = docx_path
 
         temp_dir = tempfile.mkdtemp()
         try:
-            # 1. Unzip
-            with zipfile.ZipFile(file_path, 'r') as zip_ref:
+            # 1. Unzip the DOCX
+            with zipfile.ZipFile(docx_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
 
-            # 2. Extract URL from the intended new citation
-            # We assume the citation ends with the URL or URL + punctuation
-            url_match = re.search(r'(https?://[^\s<>"]+)', citation_text)
-            if not url_match:
-                # Fallback: No URL found in new text? Just do standard replace.
-                return False, "No URL found in citation text."
-
-            new_url = url_match.group(1)
-            # Split: "Author, Title, " [URL] "."
-            parts = citation_text.split(new_url)
-            pre_text = parts[0]
-            post_text = parts[1] if len(parts) > 1 else ""
-
-            # 3. Process XML Files
-            target_files = ['word/endnotes.xml', 'word/footnotes.xml']
-            processed_any = False
+            # 2. Target XML files where citations live
+            target_files = ['word/document.xml', 'word/endnotes.xml', 'word/footnotes.xml']
             
             for xml_file in target_files:
                 full_path = os.path.join(temp_dir, xml_file)
                 if not os.path.exists(full_path): continue
 
                 with open(full_path, 'r', encoding='utf-8') as f:
-                    xml_content = f.read()
+                    content = f.read()
 
-                # Regex to find a Note that contains a Hyperlink
-                # We capture: (Start of Note ...)(Hyperlink Tag)(... End of Note)
-                # This is aggressive but necessary to re-order the runs correctly.
-                # Note: This regex assumes one note per citation line roughly.
+                # 3. The Activation Logic
+                # We look for text nodes <w:t> that contain http/https
+                # AND are NOT already inside a hyperlink or field code.
                 
-                # PATTERN: Find a note that contains <w:hyperlink ...>
-                # We iterate over all notes first
-                note_pattern = r'(<w:(?:endnote|footnote)[^>]*>)(.*?)(</w:(?:endnote|footnote)>)'
-                
-                def replace_note_content(match):
-                    open_tag = match.group(1)
-                    body = match.group(2)
-                    close_tag = match.group(3)
-
-                    # Does this note have a hyperlink?
-                    link_match = re.search(r'(<w:hyperlink[^>]*>)(.*?)(</w:hyperlink>)', body, re.DOTALL)
+                def linkify_text(match):
+                    text_content = match.group(2) # The inner text of the <w:t> tag
                     
-                    if link_match:
-                        link_open = link_match.group(1)
-                        # link_body = link_match.group(2) # We discard old link text
-                        link_close = link_match.group(3)
-
-                        # CONSTRUCT NEW XML CONTENT
-                        # 1. Pre-Link Text (Author, Title)
-                        # We use xml:space='preserve' to ensure spacing isn't eaten
-                        new_body = f"<w:r><w:t xml:space='preserve'>{pre_text}</w:t></w:r>"
-                        
-                        # 2. The Link (Just the URL)
-                        # We rebuild the link interior completely to ensure it's clean
-                        new_link_body = f"<w:r><w:rPr><w:rStyle w:val='Hyperlink'/></w:rPr><w:t>{new_url}</w:t></w:r>"
-                        new_body += f"{link_open}{new_link_body}{link_close}"
-                        
-                        # 3. Post-Link Text (Period)
-                        if post_text:
-                            new_body += f"<w:r><w:t>{post_text}</w:t></w:r>"
-                        
-                        return f"{open_tag}{new_body}{close_tag}"
+                    # Regex to find the URL within the text node
+                    # Matches http(s)://... up to a space, quote, or bracket
+                    url_match = re.search(r'(https?://[^\s<>"]+)', text_content)
                     
-                    else:
-                        # No link in original? Fallback to blind replace (Genie Style)
-                        # Remove all existing text tags and replace with one new one
-                        # This handles the 'black text' scenario safely
-                        clean_body = re.sub(r'<w:r>.*?</w:r>', '', body, flags=re.DOTALL) # strip runs? Too aggressive.
-                        # Less aggressive: Just replace text content
-                        # (Implementation omitted for brevity, focusing on the link fix)
-                        return match.group(0) 
+                    if url_match:
+                        url = url_match.group(1)
+                        
+                        # Separate potential punctuation (e.g., URL.)
+                        clean_url = url.rstrip('.,;)')
+                        trailing_punct = url[len(clean_url):]
+                        
+                        # Split the text node content into 3 parts: Pre, URL, Post
+                        # Note: This simple split handles the first URL found in the node.
+                        parts = text_content.split(url, 1)
+                        pre = parts[0]
+                        post = parts[1] if len(parts) > 1 else ""
+                        
+                        # BUILD THE FIELD CODE XML
+                        # This tells Word: "This is a HYPERLINK field pointing to clean_url"
+                        field_code = (
+                            f'<w:fldSimple w:instr=" HYPERLINK &quot;{clean_url}&quot; ">'
+                            f'<w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr>'
+                            f'<w:t>{clean_url}</w:t>'
+                            f'</w:r>'
+                            f'</w:fldSimple>'
+                        )
+                        
+                        # Reassemble the XML
+                        # We close the original <w:t>, start the field code, then maybe start a new <w:t>
+                        
+                        # Note: We must return valid run content. 
+                        # Since we are inside a <w:t>, we technically need to close the <w:t> and <w:r> 
+                        # and start new ones, but finding the parent <w:r> via regex is risky.
+                        # SAFE STRATEGY: We assume we are inside a <w:r>. We close it, insert field, open new one.
+                        
+                        new_xml = f"{pre}</w:t></w:r>{field_code}<w:r><w:t>{trailing_punct}{post}"
+                        
+                        return f"{match.group(1)}{new_xml}{match.group(3)}"
+                        
+                    return match.group(0)
 
-                new_xml_content = re.sub(note_pattern, replace_note_content, xml_content, flags=re.DOTALL)
+                # We strictly target <w:t> tags to avoid breaking XML structure
+                # We assume standard Word XML structure: <w:r><w:t>TEXT</w:t></w:r>
+                # This regex looks for w:t tags and applies the logic
+                # It includes a check to ensure we aren't already in a hyperlink (rough heuristic)
                 
-                if new_xml_content != xml_content:
-                    processed_any = True
+                # A robust regex pass:
+                # 1. Find runs <w:r>...<w:t>...</w:t>...</w:r>
+                # 2. Check if they contain http
+                run_pattern = r'(<w:r[^\>]*>)(.*?<w:t[^>]*>.*?<\/w:t>.*?)(<\/w:r>)'
+                
+                def process_run(run_match):
+                    run_open = run_match.group(1)
+                    run_inner = run_match.group(2)
+                    run_close = run_match.group(3)
+                    
+                    # Double check: ignore if this run is part of an existing field code or link
+                    # (This context check is hard with simple regex, but 'instr' usually appears in w:fldSimple parent)
+                    
+                    if 'HYPERLINK' in run_inner: return run_match.group(0)
+                    
+                    # Find the text node inside this run
+                    return re.sub(r'(<w:t[^>]*>)(.*?)(</w:t>)', linkify_text, run_match.group(0))
+
+                new_content = re.sub(run_pattern, process_run, content, flags=re.DOTALL)
+                
+                if new_content != content:
                     with open(full_path, 'w', encoding='utf-8') as f:
-                        f.write(new_xml_content)
+                        f.write(new_content)
 
             # 4. Re-zip
             with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -107,10 +118,20 @@ class LeanFormatter:
                         file_path = os.path.join(root, file)
                         arcname = os.path.relpath(file_path, temp_dir)
                         zipf.write(file_path, arcname)
-
-            return True, "Lean Formatting Complete"
+            
+            return True, "Links Activated"
 
         except Exception as e:
             return False, str(e)
         finally:
             shutil.rmtree(temp_dir)
+
+# ====================
+# HOW TO INTEGRATE
+# ====================
+# In your main app, after you create the formatted document using the existing logic,
+# run this LeanFormatter on the output file.
+# 
+# Example:
+# create_formatted_docx(..., output_path, ...)
+# LeanFormatter.activate_links(output_path)
