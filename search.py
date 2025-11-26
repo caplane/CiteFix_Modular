@@ -4,7 +4,8 @@ import citation
 import formatter
 import newspaper
 import court
-import journal 
+import journal
+import interview  # <--- 1. NEW IMPORT
 
 def search_citation(text, style='chicago'):
     clean_text = text.strip()
@@ -40,7 +41,22 @@ def search_citation(text, style='chicago'):
 def resolve_single_segment(text, style):
     results = []
     
-    # 1. LEGAL CHECK (Priority)
+    # === 1. INTERVIEW CHECK (Top Priority) ===
+    # If the user explicitly types "interview", we route to the local parser.
+    if 'interview' in text.lower():
+        metadata = interview.extract_metadata(text)
+        formatted = interview.format_citation(metadata)
+        
+        results.append({
+            'formatted': formatted,
+            'source': 'Interview Engine',
+            'confidence': 'high',
+            'type': 'interview',
+            'details': f"Subject: {metadata.get('subject', 'Unknown')}"
+        })
+        return results
+
+    # === 2. LEGAL CHECK ===
     if court.is_legal_citation(text):
         metadata = court.extract_metadata(text)
         formatted = formatter.CitationFormatter.format(metadata, style)
@@ -56,7 +72,7 @@ def resolve_single_segment(text, style):
         })
         if confidence == 'high': return results
 
-    # 2. JOURNAL CHECK (The Smart Logic)
+    # === 3. JOURNAL CHECK (Smart AI) ===
     journal_data = journal.extract_metadata(text)
     
     if journal_data.get('title') and journal_data.get('title') != 'Unknown Article':
@@ -72,7 +88,7 @@ def resolve_single_segment(text, style):
         })
         if is_solid: return results
 
-    # 3. URL CHECK
+    # === 4. URL CHECK ===
     urls = re.findall(r'(https?://[^\s]+)', text)
     if urls:
         for raw_url in urls:
@@ -88,7 +104,7 @@ def resolve_single_segment(text, style):
                 results.insert(0, {'formatted': formatted, 'source': metadata.get('newspaper', 'Newspaper'), 'confidence': 'high', 'type': 'newspaper'})
                 return results
 
-    # 4. BOOK SEARCH (Fallback)
+    # === 5. BOOK SEARCH (Fallback) ===
     candidates = citation.extract_metadata(text)
     for cand in candidates:
         formatted = formatter.CitationFormatter.format(cand, style)
