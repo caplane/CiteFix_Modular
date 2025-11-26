@@ -16,7 +16,7 @@ class CitationFormatter:
         style = style.lower()
         source_type = metadata.get('type')
         
-        # === CHICAGO (History/Humanities) ===
+        # === CHICAGO ===
         if style == 'chicago':
             if source_type == 'legal': return CitationFormatter._chicago_legal(metadata)
             if source_type == 'journal': return CitationFormatter._chicago_journal(metadata)
@@ -24,28 +24,28 @@ class CitationFormatter:
             if source_type == 'newspaper': return CitationFormatter._chicago_newspaper(metadata)
             if source_type == 'government': return CitationFormatter._chicago_gov(metadata)
 
-        # === BLUEBOOK (US Law) ===
+        # === BLUEBOOK ===
         elif style == 'bluebook':
             if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata)
             if source_type == 'journal': return CitationFormatter._bluebook_journal(metadata)
             if source_type == 'book': return CitationFormatter._bluebook_book(metadata)
-            return CitationFormatter._chicago_gov(metadata) # Fallback
+            return CitationFormatter._chicago_gov(metadata) 
 
-        # === OSCOLA (UK Law) ===
+        # === OSCOLA ===
         elif style == 'oscola':
             if source_type == 'legal': return CitationFormatter._oscola_legal(metadata)
             if source_type == 'journal': return CitationFormatter._oscola_journal(metadata)
             if source_type == 'book': return CitationFormatter._oscola_book(metadata)
-            return CitationFormatter._chicago_gov(metadata) # Fallback
+            return CitationFormatter._chicago_gov(metadata) 
 
-        # === APA (Psychology/Sciences) ===
+        # === APA ===
         elif style == 'apa':
             if source_type == 'journal': return CitationFormatter._apa_journal(metadata)
             if source_type == 'book': return CitationFormatter._apa_book(metadata)
-            if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata) # APA defers to Bluebook
+            if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata)
             return CitationFormatter._apa_generic(metadata)
 
-        # === MLA (Humanities) ===
+        # === MLA ===
         elif style == 'mla':
             if source_type == 'journal': return CitationFormatter._mla_journal(metadata)
             if source_type == 'book': return CitationFormatter._mla_book(metadata)
@@ -85,7 +85,7 @@ class CitationFormatter:
         elif len(authors) == 2: return f"{authors[0]} and {authors[1]}"
         return f"{authors[0]} et al."
 
-    # ==================== CHICAGO IMPLEMENTATION ====================
+    # ==================== STYLE IMPLEMENTATIONS ====================
 
     @staticmethod
     def _chicago_journal(data):
@@ -127,14 +127,15 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_gov(data):
-        # Separation of URL and Period for clean auto-linking
         parts = []
         parts.append(f"{data.get('author', 'U.S. Gov')}")
         parts.append(f"\"{data.get('title')}\"")
         parts.append(f"accessed {data.get('access_date')}")
         base_cit = ", ".join(parts)
         url = data.get('url')
-        if url: return f"{base_cit}, {url}."
+        if url: 
+            # Ensure the period is separate from the URL string
+            return f"{base_cit}, {url}."
         return f"{base_cit}."
 
     @staticmethod
@@ -147,8 +148,7 @@ class CitationFormatter:
         if data.get('url'): parts.append(data['url'])
         return ", ".join(parts) + "."
 
-    # ==================== OTHER STYLES (Placeholder Wrapper) ====================
-    # (Retaining existing logic for Bluebook, OSCOLA, APA, MLA)
+    # ... (Bluebook, OSCOLA, APA, MLA methods remain unchanged)
     
     @staticmethod
     def _bluebook_legal(data):
@@ -172,7 +172,7 @@ class CitationFormatter:
         author = CitationFormatter._format_authors(data.get('authors', []), 'bluebook')
         title = data.get('title', '').upper()
         return f"{author}, {title} ({data.get('year', '')})."
-
+    
     @staticmethod
     def _oscola_legal(data):
         case_name = f"<i>{data.get('case_name', '')}</i>"
@@ -194,7 +194,7 @@ class CitationFormatter:
         title = f"<i>{data.get('title', '')}</i>"
         pub_info = f"({data.get('publisher', '')} {data.get('year', '')})".replace('  ', ' ')
         return f"{author}, {title} {pub_info}."
-
+        
     @staticmethod
     def _apa_journal(data):
         author = CitationFormatter._format_authors(data.get('authors', []), 'apa')
@@ -247,19 +247,18 @@ class CitationFormatter:
 class DocumentProcessor:
     """
     HANDLES FILE MANIPULATION USING THE 'GENIE' METHOD:
-    1. Uses shutil.copytree to preserve the full document structure (including _rels).
-    2. Performs 'Surgical Replacement' inside XML to keep existing links alive.
+    Preserves document structure via copytree and injects text into existing XML.
     """
 
     @staticmethod
     def extract_structure(file_path):
-        """Step 1: Unzip to Temp Dir (Genie Method)"""
+        """Step 1: Unzip to Temp Dir"""
         temp_dir = tempfile.mkdtemp()
         try:
             with zipfile.ZipFile(file_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
             
-            # Read relevant XML files
+            # Read files
             content = ""
             doc_path = os.path.join(temp_dir, 'word', 'document.xml')
             if os.path.exists(doc_path):
@@ -272,7 +271,6 @@ class DocumentProcessor:
                 with open(endnotes_path, 'r', encoding='utf-8') as f:
                     endnotes_content = f.read()
             
-            # Styles (optional, read for context if needed)
             styles_content = ""
             styles_path = os.path.join(temp_dir, 'word', 'styles.xml')
             if os.path.exists(styles_path):
@@ -291,9 +289,8 @@ class DocumentProcessor:
 
     @staticmethod
     def parse_citations(xml_content):
-        """Step 2: Parse Citations from XML"""
+        """Step 2: Parse Citations"""
         if not xml_content: return []
-        
         endnotes = []
         endnote_pattern = r'<w:endnote[^>]*w:id="(\d+)"[^>]*>(.*?)</w:endnote>'
         matches = re.finditer(endnote_pattern, xml_content, re.DOTALL)
@@ -303,7 +300,6 @@ class DocumentProcessor:
             note_content = match.group(2)
             if note_id in ['-1', '0']: continue 
             
-            # Stitch split text for cleaner parsing
             text_pattern = r'<w:t[^>]*>([^<]+)</w:t>'
             texts = re.findall(text_pattern, note_content)
             full_text = ''.join(texts)
@@ -319,55 +315,94 @@ class DocumentProcessor:
     @staticmethod
     def create_formatted_docx(docx_structure, formatted_citations, output_path):
         """
-        Step 3: Create Output (Genie Method)
-        - Copies original _rels/structure.
-        - Updates text inside XML nodes without breaking containers.
+        Step 3: Create Output
+        Uses 'Smart Replacement' to preserve hyperlinks.
+        Instead of blindly overwriting the first node (which deletes links if they appear later),
+        it detects <w:hyperlink> and injects the URL component specifically into the link tag.
         """
         temp_output = tempfile.mkdtemp()
         
         try:
-            # A. PRESERVE STRUCTURE: Copy everything from the extracted temp_dir
             shutil.copytree(docx_structure['temp_dir'], temp_output, dirs_exist_ok=True)
             
-            # B. SURGICAL REPLACEMENT in Endnotes
             endnotes_path = os.path.join(temp_output, 'word', 'endnotes.xml')
             if os.path.exists(endnotes_path) and formatted_citations:
                 with open(endnotes_path, 'r', encoding='utf-8') as f:
                     endnotes_content = f.read()
                 
                 for citation in formatted_citations:
+                    formatted_text = citation['formatted']
+                    
                     # Find the specific endnote block
                     pattern = f'<w:endnote[^>]*w:id="{citation["id"]}"[^>]*>(.*?)</w:endnote>'
                     match = re.search(pattern, endnotes_content, re.DOTALL)
                     
                     if match:
                         note_xml = match.group(1)
-                        # Find all text nodes in this note
+                        
+                        # SMART LOGIC: Check if this note has a Hyperlink tag
+                        hyperlink_match = re.search(r'(<w:hyperlink[^>]*>)(.*?)(</w:hyperlink>)', note_xml, re.DOTALL)
+                        
+                        if hyperlink_match:
+                            # 1. Extract URL from the new formatted text
+                            url_regex = re.search(r'(https?://[^\s<>]+?)([.,;]?)$', formatted_text)
+                            
+                            if url_regex:
+                                found_url = url_regex.group(1)
+                                punctuation = url_regex.group(2)
+                                
+                                # Split text into Pre-URL and URL parts
+                                pre_text = formatted_text.replace(found_url + punctuation, "")
+                                
+                                # 2. Inject Pre-Text into the FIRST text node (before the link)
+                                text_pattern = r'(<w:t[^>]*>)([^<]+)(</w:t>)'
+                                text_matches = list(re.finditer(text_pattern, note_xml))
+                                if text_matches:
+                                    first_match = text_matches[0]
+                                    # Replace first node content
+                                    note_xml = note_xml[:first_match.start()] + \
+                                               first_match.group(1) + pre_text + first_match.group(3) + \
+                                               note_xml[first_match.end():]
+
+                                # 3. Re-find the Hyperlink (content shifted) and inject URL into IT
+                                hyperlink_match = re.search(r'(<w:hyperlink[^>]*>)(.*?)(</w:hyperlink>)', note_xml, re.DOTALL)
+                                if hyperlink_match:
+                                    link_inner = hyperlink_match.group(2)
+                                    # Replace text inside the hyperlink tag
+                                    link_inner = re.sub(r'(<w:t[^>]*>)([^<]+)(</w:t>)', r'\1' + found_url + r'\3', link_inner)
+                                    
+                                    # Add the punctuation (period) AFTER the link
+                                    post_link = f"<w:r><w:t>{punctuation}</w:t></w:r>" if punctuation else ""
+                                    
+                                    # Reassemble
+                                    note_xml = note_xml[:hyperlink_match.start()] + \
+                                               hyperlink_match.group(1) + link_inner + hyperlink_match.group(3) + \
+                                               post_link + \
+                                               note_xml[hyperlink_match.end():]
+                                    
+                                    # Update content
+                                    full_note = f'<w:endnote w:id="{citation["id"]}">{note_xml}</w:endnote>'
+                                    endnotes_content = endnotes_content.replace(match.group(0), full_note)
+                                    continue # Skip to next citation
+
+                        # FALLBACK: No hyperlink tag found, or no URL in text? Use Standard Genie Blind Replace
                         text_pattern = r'(<w:t[^>]*>)([^<]+)(</w:t>)'
                         text_matches = list(re.finditer(text_pattern, note_xml))
                         
                         if text_matches:
-                            formatted_text = citation['formatted']
                             first_match = text_matches[0]
-                            
-                            # CRITICAL STEP: Replace text in the FIRST node, remove others.
-                            # This preserves the surrounding XML (including <w:hyperlink>).
                             new_xml = note_xml[:first_match.start()] + \
                                       first_match.group(1) + formatted_text + first_match.group(3)
                             
-                            # Remove subsequent text nodes (garbage collection)
                             for sub_match in reversed(text_matches[1:]):
                                 new_xml = new_xml[:sub_match.start()] + new_xml[sub_match.end():]
                             
-                            # Inject updated XML back into the file content
                             full_note = f'<w:endnote w:id="{citation["id"]}">{new_xml}</w:endnote>'
                             endnotes_content = endnotes_content.replace(match.group(0), full_note)
-                
-                # Write changes
+
                 with open(endnotes_path, 'w', encoding='utf-8') as f:
                     f.write(endnotes_content)
             
-            # C. RE-ZIP
             with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for root, dirs, files in os.walk(temp_output):
                     for file in files:
@@ -378,4 +413,3 @@ class DocumentProcessor:
             
         finally:
             shutil.rmtree(temp_output, ignore_errors=True)
-            # Do not remove docx_structure['temp_dir'] here as it might be used again
