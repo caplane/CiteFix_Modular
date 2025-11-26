@@ -1,43 +1,55 @@
-@staticmethod
-    def _chicago_journal(data):
-        # Format: Author, "Title," Journal Vol, no. Issue (Year): Pages.
-        parts = []
-        
-        # 1. Authors
-        authors = data.get('authors', [])
-        if authors:
-            if len(authors) == 1: parts.append(authors[0])
-            elif len(authors) == 2: parts.append(f"{authors[0]} and {authors[1]}")
-            elif len(authors) > 2: parts.append(f"{authors[0]} et al.")
-        
-        # 2. Title (quoted)
-        title = data.get('title', 'Unknown Title')
-        parts.append(f'"{title}"')
-        
-        # 3. Journal Details
-        journal = data.get('journal', '')
-        vol = data.get('volume', '')
-        issue = data.get('issue', '')
-        year = data.get('year', '')
-        pages = data.get('pages', '')
-        
-        citation_part = ""
-        if journal: citation_part += f"<i>{journal}</i>"
-        if vol: citation_part += f" {vol}"
-        if issue: citation_part += f", no. {issue}"
-        if year: citation_part += f" ({year})"
-        if pages: citation_part += f": {pages}"
-        
-        if citation_part: parts.append(citation_part)
-        
-        # 4. DOI or URL (Optional but recommended for electronic sources)
-        doi = data.get('doi')
-        if doi: parts.append(f"https://doi.org/{doi}")
-        
-        return ", ".join(parts) + "."
-```
+def _chicago_journal(data):
+    """
+    Formats a journal article citation in Chicago Author-Date style.
+    Expected data keys: author, title, journal, volume, issue, year, pages, doi
+    """
+    # 1. Author (Last, First M.)
+    author = data.get("author", "Unknown Author")
+    if not author.endswith("."):
+        author += "."
 
-### **Step 3: Update `search.py`**
-We need to wire the new engine into the router so it actually gets used.
+    # 2. Year
+    year = data.get("year", "n.d.")
 
-**Action:** Update `resolve_single_segment` in `search.py`.
+    # 3. Article Title (in quotes)
+    title = data.get("title", "Untitled")
+    if not title.endswith(".") and not title.endswith("?"):
+        title += "."
+    
+    # 4. Journal Name (Italicized logic handled by Markdown or HTML usually, keeping plain text here)
+    journal = data.get("journal", "Unknown Journal")
+    
+    # 5. Volume, Issue, Pages
+    volume = data.get("volume", "")
+    issue = data.get("issue", "")
+    pages = data.get("pages", "")
+    
+    # Constructing the citation parts
+    citation = f"{author} {year}. \"{title}\" {journal} {volume}"
+    
+    if issue:
+        citation += f", no. {issue}"
+        
+    if pages:
+        citation += f": {pages}"
+        
+    citation += "."
+    
+    # Add DOI or URL if present
+    if data.get("doi"):
+        citation += f" https://doi.org/{data['doi']}."
+    elif data.get("url"):
+        citation += f" {data['url']}."
+        
+    return citation
+
+def format_citation(data, style="chicago"):
+    """
+    Public interface to format citations.
+    """
+    if style.lower() == "chicago":
+        # logic to determine if it's a journal, book, etc.
+        # For now, defaulting to journal based on your error logs
+        return _chicago_journal(data)
+    
+    return "Style not supported."
