@@ -1,16 +1,14 @@
 import os
 import zipfile
-import shutil
 import re
 import xml.etree.ElementTree as ET
 
 class WordDocumentProcessor:
     """
     Handles reading and writing to .docx files by treating them
-    as zipped XML directories. 
+    as zipped XML directories.
     
-    This avoids external dependencies like python-docx, which 
-    often struggles with Endnote XML.
+    UPDATED: Now supports writing italics into the XML structure.
     """
     
     NAMESPACES = {
@@ -79,18 +77,23 @@ class WordDocumentProcessor:
     def write_endnote(self, note_id, new_content):
         """
         Updates the text of a specific endnote in the XML.
-        Note: This currently strips HTML tags to ensure XML validity.
+        
+        CRITICAL UPDATE:
+        Instead of stripping HTML, this now parses <i> tags and converts 
+        them to Word's <w:i/> XML tags to preserve italics.
         """
         if not os.path.exists(self.endnotes_path):
             return False
 
         try:
-            # register namespace to prevent ns0: prefixes
+            # register namespace to prevent ns0: prefixes in output
             ET.register_namespace('w', self.NAMESPACES['w'])
+            ET.register_namespace('xml', self.NAMESPACES['xml'])
             
             tree = ET.parse(self.endnotes_path)
             root = tree.getroot()
             
+            # 1. Find the specific endnote by ID
             target_note = None
             for endnote in root.findall('.//w:endnote', self.NAMESPACES):
                 if endnote.get(f"{{{self.NAMESPACES['w']}}}id") == str(note_id):
@@ -100,25 +103,51 @@ class WordDocumentProcessor:
             if target_note is None:
                 return False
 
-            # 1. Strip HTML tags (handling <i>, </i>, etc. from formatter)
-            # A robust implementation would convert <i> to <w:rPr><w:i/></w:rPr>
-            # For now, we strip to plain text to prevent corruption.
-            clean_text = re.sub(r'<[^>]+>', '', new_content)
-
-            # 2. Find all existing text nodes
-            text_nodes = target_note.findall('.//w:t', self.NAMESPACES)
+            # 2. Find the first Paragraph <w:p> inside the note
+            # We will clear this paragraph and rebuild it with our new runs
+            paragraph = target_note.find('.//w:p', self.NAMESPACES)
             
-            if not text_nodes:
-                # If no text nodes exist, we might need to create structure
-                # This is a simple fallback for existing nodes
-                return False
+            if paragraph is None:
+                # If no paragraph exists (rare), create one
+                paragraph = ET.SubElement(target_note, f"{{{self.NAMESPACES['w']}}}p")
+            else:
+                # Clear existing content (runs, text, etc.) from the paragraph
+                # This ensures we don't duplicate text or leave old text behind
+                for child in list(paragraph):
+                    paragraph.remove(child)
 
-            # 3. Update the FIRST text node and clear the rest
-            # This preserves the paragraph structure of the original note
-            text_nodes[0].text = clean_text
-            for node in text_nodes[1:]:
-                node.text = ""
+            # 3. Parse the HTML content and build XML Runs (<w:r>)
+            # We split by tags to separate italic parts from normal parts
+            parts = re.split(r'(<i>|</i>)', new_content)
+            is_italic = False
+            
+            for part in parts:
+                if part == '<i>':
+                    is_italic = True
+                    continue
+                elif part == '</i>':
+                    is_italic = False
+                    continue
+                
+                # Skip empty strings from the split
+                if not part: continue
 
+                # Create a new Run <w:r>
+                run = ET.SubElement(paragraph, f"{{{self.NAMESPACES['w']}}}r")
+                
+                # If currently inside <i> tags, add the Property <w:rPr> and Italic <w:i/>
+                if is_italic:
+                    rPr = ET.SubElement(run, f"{{{self.NAMESPACES['w']}}}rPr")
+                    ET.SubElement(rPr, f"{{{self.NAMESPACES['w']}}}i")
+                    
+                # Add the Text node <w:t>
+                text_node = ET.SubElement(run, f"{{{self.NAMESPACES['w']}}}t")
+                text_node.text = part
+                
+                # CRITICAL: Preserve spaces (otherwise Word might trim leading/trailing spaces)
+                text_node.set(f"{{{self.NAMESPACES['xml']}}}space", "preserve")
+
+            # 4. Save the modified XML back to disk
             tree.write(self.endnotes_path, encoding='UTF-8', xml_declaration=True)
             return True
 
