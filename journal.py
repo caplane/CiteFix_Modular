@@ -32,6 +32,8 @@ class CrossRefAPI:
 
 class SemanticScholarAPI:
     BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+    # FIX: Define Headers here too so we don't get blocked
+    HEADERS = {'User-Agent': 'IncipitGenie/2.0 (mailto:admin@example.com)'}
 
     @staticmethod
     def search_fuzzy(query):
@@ -41,7 +43,9 @@ class SemanticScholarAPI:
                 'limit': 1,
                 'fields': 'title,authors,venue,year,volume,issue,pages,externalIds'
             }
-            response = requests.get(SemanticScholarAPI.BASE_URL, params=params, timeout=5)
+            # FIX: Added headers=SemanticScholarAPI.HEADERS below
+            response = requests.get(SemanticScholarAPI.BASE_URL, params=params, headers=SemanticScholarAPI.HEADERS, timeout=5)
+            
             if response.status_code == 200:
                 data = response.json()
                 if data.get('total', 0) > 0:
