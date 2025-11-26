@@ -303,3 +303,17 @@ class CitationFormatter:
         title = f"<i>{data.get('title', '')}</i>."
         pub = data.get('publisher', '')
         year = data.get('year', '')
+        return f"{author} {title} {pub}, {year}."
+
+    @staticmethod
+    def _mla_generic(data):
+        return f"{data.get('raw_source', '')}"
+
+    @staticmethod
+    def _mla_interview(data):
+        author = CitationFormatter._format_authors([data.get('interviewee', 'Anonymous')], 'mla')
+        title = f'"{data.get("title", "")}."' if data.get('title') else "Interview."
+        parts = [author, title]
+        if data.get('interviewer'): parts.append(f"Conducted by {data['interviewer']}")
+        if data.get('date'): parts.append(data['date'])
+        return ". ".join(parts) + "."
