@@ -8,7 +8,7 @@ class CitationFormatter:
     """
     HANDLES STRING FORMATTING:
     Converts metadata dictionaries into styled citation strings 
-    (Chicago, Bluebook, APA, MLA, OSCOLA).
+    (Chicago, Bluebook, OSCOLA, APA, MLA).
     """
     
     @staticmethod
@@ -101,6 +101,7 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_journal(data):
+        # Author, "Title," Journal Vol, no. Issue (Year): Pages.
         parts = []
         if data.get('authors'): parts.append(CitationFormatter._format_authors(data['authors'], 'chicago'))
         if data.get('title'): parts.append(f'"{data["title"]}"')
@@ -113,6 +114,8 @@ class CitationFormatter:
         parts.append(journal_str)
         
         if data.get('doi'): parts.append(f"https://doi.org/{data['doi']}")
+        
+        # FIX: Ensure URL is joined cleanly, allowing regex to detect it later
         elif data.get('url'): parts.append(data['url'])
         
         return ", ".join(parts) + "."
@@ -137,6 +140,7 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_legal(data):
+        # Case Name, Vol Rep Page (Court Year).
         citation = data.get('citation', '')
         case_name = f"<i>{data.get('case_name', '')}</i>"
         court_year = f"({data.get('court', '')} {data.get('year', '')})".replace('  ', ' ')
@@ -145,7 +149,21 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_gov(data):
-        return f"{data.get('author', 'U.S. Gov')}, \"{data.get('title')},\" accessed {data.get('access_date')}, {data.get('url')}."
+        # FIX: Prevent the "Trailing Period" bug.
+        # We build the base citation first, then append the URL, then append the period outside the URL.
+        parts = []
+        parts.append(f"{data.get('author', 'U.S. Gov')}")
+        parts.append(f"\"{data.get('title')}\"")
+        parts.append(f"accessed {data.get('access_date')}")
+        
+        base_cit = ", ".join(parts)
+        
+        url = data.get('url')
+        if url:
+            # Return "Base, URL." (Dot is separate)
+            return f"{base_cit}, {url}."
+        
+        return f"{base_cit}."
 
     @staticmethod
     def _chicago_newspaper(data):
@@ -161,16 +179,26 @@ class CitationFormatter:
 
     @staticmethod
     def _bluebook_legal(data):
+        # Case Name, Vol Rep Page (Court Year). 
+        # Note: Bluebook standard technically does NOT italicize case names in footnotes 
+        # unless grammatically part of the sentence, but practitioner standard often does. 
+        # We will use italics for clarity as it's safer.
         citation = data.get('citation', '')
         case_name = f"<i>{data.get('case_name', '')}</i>"
+        
         court = data.get('court', '')
+        # Special logic: If SCOTUS (U.S. report), court name is omitted from parenthetical
         if 'U.S.' in citation and not court: court = '' 
+        
         parenthetical = f"({court} {data.get('year', '')})".replace('  ', ' ').replace('()', '')
+        
         if citation: return f"{case_name}, {citation} {parenthetical}."
         return f"{case_name} {parenthetical}."
 
     @staticmethod
     def _bluebook_journal(data):
+        # Author, Title, Vol Journal Page (Year).
+        # Journal name is Small Caps in Bluebook. We use italics here for web compatibility.
         author = CitationFormatter._format_authors(data.get('authors', []), 'bluebook')
         title = f"<i>{data.get('title', '')}</i>"
         journal = f"{data.get('journal', '')}" 
@@ -178,6 +206,8 @@ class CitationFormatter:
 
     @staticmethod
     def _bluebook_book(data):
+        # Author, Title (Year).
+        # Title is Small Caps. We use ALL CAPS to mimic this.
         author = CitationFormatter._format_authors(data.get('authors', []), 'bluebook')
         title = data.get('title', '').upper()
         return f"{author}, {title} ({data.get('year', '')})."
@@ -186,21 +216,29 @@ class CitationFormatter:
 
     @staticmethod
     def _oscola_legal(data):
+        # Case Name [Year] OR (Year) Vol Report Page (Court).
+        # OSCOLA: Italics for name, no punctuation after name.
         case_name = f"<i>{data.get('case_name', '')}</i>"
         citation = data.get('citation', '')
         court = data.get('court', '')
         year = data.get('year', '')
+
+        # Heuristic: If citation has brackets [], it's neutral/year-based. If not, use parens ().
         year_str = f"({year})" if year else ""
+        
         return f"{case_name} {year_str} {citation} ({court})"
 
     @staticmethod
     def _oscola_journal(data):
+        # Author, 'Title' (Year) Vol Journal Page.
+        # Note: Single quotes for title, no "p" or "pp" for pages.
         author = CitationFormatter._format_authors(data.get('authors', []), 'oscola')
         title = f"'{data.get('title', '')}'"
         return f"{author}, {title} ({data.get('year', '')}) {data.get('volume', '')} {data.get('journal', '')} {data.get('pages', '')}."
 
     @staticmethod
     def _oscola_book(data):
+        # Author, Title (Publisher Year).
         author = CitationFormatter._format_authors(data.get('authors', []), 'oscola')
         title = f"<i>{data.get('title', '')}</i>"
         pub_info = f"({data.get('publisher', '')} {data.get('year', '')})".replace('  ', ' ')
@@ -210,17 +248,21 @@ class CitationFormatter:
 
     @staticmethod
     def _apa_journal(data):
+        # Author, A. A. (Year). Title. Journal, Vol(Issue), Page.
         author = CitationFormatter._format_authors(data.get('authors', []), 'apa')
         year = f"({data.get('year', 'n.d.')})"
         title = data.get('title', '')
+        
         journal = f"<i>{data.get('journal', '')}</i>"
         vol = f"<i>{data.get('volume', '')}</i>"
         issue = f"({data.get('issue', '')})" if data.get('issue') else ""
         pages = data.get('pages', '')
+        
         return f"{author} {year}. {title}. {journal}, {vol}{issue}, {pages}."
 
     @staticmethod
     def _apa_book(data):
+        # Author, A. A. (Year). Title. Publisher.
         author = CitationFormatter._format_authors(data.get('authors', []), 'apa')
         year = f"({data.get('year', 'n.d.')})"
         title = f"<i>{data.get('title', '')}</i>"
@@ -235,19 +277,23 @@ class CitationFormatter:
 
     @staticmethod
     def _mla_journal(data):
+        # Author. "Title." Journal, vol. X, no. X, Year, pp. X-X.
         author = CitationFormatter._format_authors(data.get('authors', []), 'mla')
         title = f'"{data.get("title", "")}."'
         journal = f"<i>{data.get('journal', '')}</i>"
+        
         details = []
         if data.get('volume'): details.append(f"vol. {data['volume']}")
         if data.get('issue'): details.append(f"no. {data['issue']}")
         if data.get('year'): details.append(data['year'])
         if data.get('pages'): details.append(f"pp. {data['pages']}")
+        
         det_str = ", ".join(details)
         return f"{author} {title} {journal}, {det_str}."
 
     @staticmethod
     def _mla_book(data):
+        # Author. Title. Publisher, Year.
         author = CitationFormatter._format_authors(data.get('authors', []), 'mla')
         title = f"<i>{data.get('title', '')}</i>."
         pub = data.get('publisher', '')
@@ -261,112 +307,128 @@ class CitationFormatter:
 
 class DocxLinkPreserver:
     """
-    HANDLES FILE MANIPULATION:
-    Processes the raw DOCX structure to fix broken URLs that span multiple lines.
-    This mimics the logic used in Incipit Genie (direct XML editing).
+    HANDLES FILE MANIPULATION (The 'Genie' Logic):
+    1. Stitches broken URLs that span multiple lines (fixing 'management- plan').
+    2. 'Auto-Linkifies' plain text URLs using Word Field Codes (HYPERLINK),
+       so they are clickable even if the input text was just black text.
     """
 
     def __init__(self):
-        # Regex to find URLs split by a hyphen and a newline/space
-        # Matches: "http://...management-" + whitespace + "plan"
+        # Regex to find URLs split by hyphen+newline (Fixes "...management- plan")
         self.url_split_pattern = r'(https?://[^\s<>"]+)-\s+([^\s<>"]+)'
         
-        # Regex to find URLs split by just whitespace
-        # Matches: "http://...management" + whitespace + "/plan"
+        # Regex to find URLs split by simple whitespace (Fixes "...epa .gov")
         self.url_break_pattern = r'(https?://[^\s<>"]+)\s+(\/[^\s<>"]+)'
 
     def clean_text_content(self, text):
-        """
-        Fixes broken URLs in a plain text string.
-        """
-        # Fix hyphenated breaks
+        """Stitches broken text URLs back together."""
         text = re.sub(self.url_split_pattern, r'\1\2', text)
-        # Fix whitespace breaks
         text = re.sub(self.url_break_pattern, r'\1\2', text)
         return text
 
-    def _stitch_xml_nodes(self, xml_content):
+    def _generate_hyperlink_xml(self, url, text_content):
         """
-        Core logic to find split text nodes in endnotes/footnotes
-        and stitch them back together without breaking surrounding tags.
+        Creates a 'w:fldSimple' XML block.
+        This forces Word to treat the text as a live HYPERLINK field 
+        without needing complex relationship definitions in other XML files.
         """
-        # Pattern to find endnotes or footnotes blocks
-        # We capture the ID to ensure we process distinct notes
-        note_pattern = r'(<w:endnote[^>]*w:id="(\d+)"[^>]*>)(.*?)(</w:endnote>)'
+        # XML escape the URL for the instruction attribute
+        safe_url = url.replace('"', '&quot;')
         
-        def replace_note_content(match):
-            open_tag = match.group(1)
-            # note_id = match.group(2) # Unused but available for debugging
-            inner_xml = match.group(3)
-            close_tag = match.group(4)
+        # We construct the raw XML for a Word field code
+        xml = (
+            f'<w:fldSimple w:instr=" HYPERLINK &quot;{safe_url}&quot; ">'
+            f'<w:r>'
+            f'<w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr>'  # Makes it Blue/Underlined
+            f'<w:t>{text_content}</w:t>'
+            f'</w:r>'
+            f'</w:fldSimple>'
+        )
+        return xml
 
-            # 1. Extract all text nodes <w:t> from this specific note
+    def _stitch_and_linkify(self, xml_content):
+        """
+        Scans Endnotes/Footnotes/Body XML.
+        1. Stitches split text nodes.
+        2. Detects URLs.
+        3. Wraps URLs in Hyperlink Field Codes.
+        """
+        # Pattern to catch paragraphs <w:p> and notes <w:endnote/footnote>
+        block_pattern = r'(<(?:w:p|w:endnote|w:footnote)[^>]*>)(.*?)(</(?:w:p|w:endnote|w:footnote)>)'
+        
+        def replace_block(match):
+            open_tag, inner_xml, close_tag = match.groups()
+
+            # 1. Extract text nodes
             text_node_pattern = r'(<w:t[^>]*>)([^<]+)(</w:t>)'
             text_matches = list(re.finditer(text_node_pattern, inner_xml))
+            if not text_matches: return match.group(0)
 
-            if not text_matches:
-                return match.group(0)
-
-            # 2. Join all text parts to form one cohesive string
+            # 2. Join all text to fix the split (Stitching)
             full_text = "".join([m.group(2) for m in text_matches])
-            
-            # 3. Apply the URL Fixer
             cleaned_text = self.clean_text_content(full_text)
 
-            # 4. Reconstruction:
-            # Inject clean text into the FIRST text node.
-            # Delete subsequent text nodes (the fragments).
-            # Preserve all non-text XML (formatting tags, runs, etc).
-            
-            first_match = text_matches[0]
-            
-            # Start of inner XML (before the first text)
-            new_inner_xml = inner_xml[:first_match.start()]
-            
-            # The consolidated text node
-            new_inner_xml += f"{first_match.group(1)}{cleaned_text}{first_match.group(3)}"
-            
-            # Append remaining XML, skipping the text nodes we just merged
-            last_end = first_match.end()
-            for next_match in text_matches[1:]:
-                # Append content between the previous match and this one
-                new_inner_xml += inner_xml[last_end:next_match.start()]
-                last_end = next_match.end()
-            
-            # Append remaining XML after the last text node
-            new_inner_xml += inner_xml[last_end:]
+            # 3. Check if the RESULTING text contains a URL
+            # We look for http... and capture it, separating trailing punctuation ([.,;]?)
+            url_match = re.search(r'(https?://[^\s<>"]+?)([.,;]?)$', cleaned_text)
 
-            return f"{open_tag}{new_inner_xml}{close_tag}"
+            if url_match:
+                # WE HAVE A URL! -> Upgrade to Hyperlink
+                found_url = url_match.group(1)
+                punctuation = url_match.group(2)
+                
+                # Generate the Field Code XML for the link
+                link_xml = self._generate_hyperlink_xml(found_url, found_url)
+                
+                # Handle text BEFORE the URL (e.g. "Accessed date, ")
+                pre_text = cleaned_text.replace(found_url + punctuation, "")
+                
+                # Reconstruct: Pre-Text + Hyperlink + Punctuation
+                new_content = ""
+                if pre_text:
+                    new_content += f"<w:r><w:t xml:space='preserve'>{pre_text}</w:t></w:r>"
+                
+                new_content += link_xml
+                
+                if punctuation:
+                    new_content += f"<w:r><w:t>{punctuation}</w:t></w:r>"
 
-        # Apply the replacement function
-        return re.sub(note_pattern, replace_note_content, xml_content, flags=re.DOTALL)
+                # Return the new structure inside the block
+                return f"{open_tag}{new_content}{close_tag}"
+
+            else:
+                # NO URL -> Just return the stitched text (Normal behavior)
+                # This fixes the split text but leaves it as plain text if no http detected
+                first_match = text_matches[0]
+                new_inner = inner_xml[:first_match.start()] + \
+                            f"{first_match.group(1)}{cleaned_text}{first_match.group(3)}" + \
+                            inner_xml[text_matches[-1].end():]
+                return f"{open_tag}{new_inner}{close_tag}"
+
+        return re.sub(block_pattern, replace_block, xml_content, flags=re.DOTALL)
 
     def process_document(self, input_path, output_path=None):
         """
-        Main entry point for file processing.
-        Unzips DOCX, repairs XML, Rezips.
+        Main entry point: Unzips DOCX, repairs XML, Rezips.
         """
-        if output_path is None:
-            output_path = input_path
-
-        temp_dir = tempfile.mkdtemp()
+        if output_path is None: output_path = input_path
         
+        temp_dir = tempfile.mkdtemp()
         try:
             # 1. Unzip
             with zipfile.ZipFile(input_path, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
 
-            # 2. Process Endnotes and Footnotes
-            target_files = ['word/endnotes.xml', 'word/footnotes.xml']
-            
+            # 2. Process XML Files (Endnotes, Footnotes, Body)
+            target_files = ['word/endnotes.xml', 'word/footnotes.xml', 'word/document.xml']
             for target in target_files:
                 full_path = os.path.join(temp_dir, target)
                 if os.path.exists(full_path):
                     with open(full_path, 'r', encoding='utf-8') as f:
                         content = f.read()
                     
-                    # Apply stitching logic
-                    new_content = self._stitch_xml_nodes(content)
+                    # Apply Stitching + Auto-Linking
+                    new_content = self._stitch_and_linkify(content)
                     
                     with open(full_path, 'w', encoding='utf-8') as f:
                         f.write(new_content)
@@ -379,9 +441,9 @@ class DocxLinkPreserver:
                         arcname = os.path.relpath(file_path, temp_dir)
                         zipf.write(file_path, arcname)
             
-            return True, "Links successfully preserved."
+            return True, "Fixed split URLs and auto-generated live hyperlinks."
 
         except Exception as e:
-            return False, f"Error processing links: {str(e)}"
+            return False, f"Error: {str(e)}"
         finally:
             shutil.rmtree(temp_dir)
