@@ -19,6 +19,8 @@ from werkzeug.utils import secure_filename
 # === MODULAR ENGINE IMPORTS ===
 from document import WordDocumentProcessor
 from search import search_citation
+# NEW: Import the tool that fixes the links
+from formatter import LinkActivator 
 
 # ==================== INITIALIZATION ====================
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -145,10 +147,18 @@ def download():
         output_filename = f"Resolved_{user_data['original_filename']}"
         output_path = os.path.join(user_data['temp_dir'], output_filename)
         
-        # Delegate to Document Engine to zip files back up
+        # 1. Delegate to Document Engine to zip files back up
         processor = WordDocumentProcessor(user_data['original_filepath'])
         processor.extract_dir = user_data['extract_dir']
         processor.save_as(output_path)
+        
+        # 2. CRITICAL FIX: Run the LinkActivator on the final file
+        # This converts plain text URLs into clickable MS Word Field Codes
+        try:
+            LinkActivator.process(output_path)
+            print(f"  ✓ Links Activated for {output_filename}")
+        except Exception as e:
+            print(f"  ! Link Activation failed: {e}")
         
         return send_file(output_path, as_attachment=True, download_name=output_filename)
     except Exception as e:
@@ -159,8 +169,7 @@ def reset():
     user_data = get_user_data()
     if user_data and os.path.exists(user_data['temp_dir']):
         shutil.rmtree(user_data['temp_dir'])
-    session.clear()
-    return jsonify({'success': True})
+    session.clear()<br>    return jsonify({'success': True})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
