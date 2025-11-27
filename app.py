@@ -169,7 +169,8 @@ def reset():
     user_data = get_user_data()
     if user_data and os.path.exists(user_data['temp_dir']):
         shutil.rmtree(user_data['temp_dir'])
-    session.clear()<br>    return jsonify({'success': True})
+    session.clear()
+    return jsonify({'success': True})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
