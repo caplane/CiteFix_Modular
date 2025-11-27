@@ -1,9 +1,42 @@
 import re
 from datetime import datetime
 
+# ==================== DATE FORMAT MAP ====================
+# The system will try these formats in order until one works.
+DATE_FORMATS = [
+    "%B %d, %Y",    # January 1, 2020
+    "%b %d, %Y",    # Jan 1, 2020
+    "%m/%d/%Y",     # 11/27/1981
+    "%m-%d-%Y",     # 11-27-1981
+    "%Y-%m-%d",     # 1981-11-27 (ISO)
+    "%d %B %Y",     # 1 January 2020 (Euro)
+    "%d %b %Y",     # 1 Jan 2020 (Euro short)
+    "%B %Y",        # January 1981 (Partial)
+    "%Y"            # 1981 (Year only)
+]
+
 def is_interview_citation(text):
     triggers = ['interview', 'oral history', 'personal communication', 'conversation with']
     return any(t in text.lower() for t in triggers)
+
+def clean_ordinal_date(text):
+    """Removes st, nd, rd, th from dates (May 7th -> May 7) for parsing."""
+    return re.sub(r'(?<=\d)(st|nd|rd|th)\b', '', text)
+
+def try_parse_date(date_string):
+    """Loops through the DATE_FORMATS map to find a match."""
+    clean = clean_ordinal_date(date_string.strip())
+    # Fix: Ensure periods in abbreviations don't break parsing (Jan. -> Jan)
+    clean = clean.replace('.', '') 
+    
+    for fmt in DATE_FORMATS:
+        try:
+            dt = datetime.strptime(clean, fmt)
+            # Return in the standard Chicago format
+            return dt.strftime("%B %d, %Y")
+        except ValueError:
+            continue
+    return date_string # Return original if all parses fail
 
 def extract_metadata(text):
     clean_text = text.strip()
@@ -14,48 +47,50 @@ def extract_metadata(text):
         'interviewer': 'author',
         'title': '',
         'date': '',
-        'location': '', 
+        'location': '',
         'medium': 'Personal interview'
     }
 
-    # 1. SMART DATE EXTRACTION
-    slash_date = re.search(r'\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b', clean_text)
-    word_date = re.search(r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}', clean_text, re.IGNORECASE)
+    # 1. ROBUST DATE EXTRACTION
+    # We use a broad regex to grab the "Candidate String", then pass it to the parser map.
+    
+    # Pattern A: Numeric (11/27/1981 or 1981-11-27)
+    numeric_match = re.search(r'\b\d{1,4}[/-]\d{1,2}[/-]\d{2,4}\b', clean_text)
+    
+    # Pattern B: Written (Jan 1, 2020 or 1 Jan 2020)
+    # Matches: Month (3+ letters), optional dot, space, day, comma?, space, year
+    written_match = re.search(
+        r'\b(?:[A-Z][a-z]{2,}\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})|(?:\d{1,2}(?:st|nd|rd|th)?\s+[A-Z][a-z]{2,}\.?\s+\d{4})\b', 
+        clean_text, 
+        re.IGNORECASE
+    )
+    
+    # Pattern C: Year Only fallback
+    year_match = re.search(r'\b(19|20)\d{2}\b', clean_text)
 
-    # Track where the date ends so we can look for location afterwards
     date_end_index = len(clean_text)
 
-    if slash_date:
-        try:
-            dt = datetime.strptime(slash_date.group(0).replace('-', '/'), "%m/%d/%Y")
-            metadata['date'] = dt.strftime("%B %d, %Y")
-        except:
-            metadata['date'] = slash_date.group(0)
-        date_end_index = slash_date.end()
-        
-    elif word_date:
-        metadata['date'] = word_date.group(0).title()
-        date_end_index = word_date.end()
-    else:
-        year_match = re.search(r'\b(19|20)\d{2}\b', clean_text)
-        if year_match: 
-            metadata['date'] = year_match.group(0)
-            date_end_index = year_match.end()
+    if numeric_match:
+        metadata['date'] = try_parse_date(numeric_match.group(0))
+        date_end_index = numeric_match.end()
+    elif written_match:
+        metadata['date'] = try_parse_date(written_match.group(0))
+        date_end_index = written_match.end()
+    elif year_match:
+        metadata['date'] = year_match.group(0)
+        date_end_index = year_match.end()
 
-    # 2. LOCATION EXTRACTION (Improved State Handling)
+    # 2. LOCATION EXTRACTION
     # Grab everything after the date, strip punctuation
     potential_location = clean_text[date_end_index:].strip().strip('.,;')
     
     if potential_location:
-        # Handle "austin, tx" -> "Austin, TX"
         if ',' in potential_location:
             parts = potential_location.split(',', 1)
             city = parts[0].strip().title()
             state_raw = parts[1].strip()
             
-            # Logic: If it has exactly 2 letters (ignoring dots), it's an abbreviation -> UPPERCASE
-            # "tx" -> "TX", "d.c." -> "D.C.", "n.y." -> "N.Y."
-            # "mass." -> "Mass." (4 letters), "Ohio" -> "Ohio" (4 letters)
+            # Logic: If state is exactly 2 letters, UPPERCASE it.
             clean_letters = state_raw.replace('.', '')
             
             if len(clean_letters) == 2:
@@ -65,7 +100,6 @@ def extract_metadata(text):
             
             metadata['location'] = f"{city}, {state}"
         else:
-            # Fallback for single words
             metadata['location'] = potential_location.title()
 
     # 3. INTERVIEWER & INTERVIEWEE EXTRACTION
@@ -83,6 +117,7 @@ def extract_metadata(text):
         if simple_match:
             metadata['interviewee'] = simple_match.group(1).strip().title()
         else:
+            # Last Resort
             parts = re.split(r'\binterview\b', clean_text, flags=re.IGNORECASE)
             if parts: 
                 raw_name = parts[0].strip().title()
