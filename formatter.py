@@ -18,14 +18,13 @@ class CitationFormatter:
             if source_type == 'book': return CitationFormatter._chicago_book(metadata)
             if source_type == 'newspaper': return CitationFormatter._chicago_newspaper(metadata)
             if source_type == 'government': return CitationFormatter._chicago_gov(metadata)
-            # Route Interviews correctly
             if source_type == 'interview': return CitationFormatter._chicago_interview(metadata)
 
         # === BLUEBOOK (US Law) ===
         elif style == 'bluebook':
             if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata)
             if source_type == 'journal': return CitationFormatter._bluebook_journal(metadata)
-            if source_type == 'interview': return CitationFormatter._chicago_interview(metadata) # Bluebook defers to Chicago
+            if source_type == 'interview': return CitationFormatter._chicago_interview(metadata) 
             if source_type == 'book': return CitationFormatter._bluebook_book(metadata)
             return CitationFormatter._chicago_gov(metadata) # Fallback
 
@@ -41,7 +40,7 @@ class CitationFormatter:
             if source_type == 'journal': return CitationFormatter._apa_journal(metadata)
             if source_type == 'interview': return CitationFormatter._apa_interview(metadata)
             if source_type == 'book': return CitationFormatter._apa_book(metadata)
-            if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata) # APA defers to Bluebook
+            if source_type == 'legal': return CitationFormatter._bluebook_legal(metadata) 
             return CitationFormatter._apa_generic(metadata)
 
         # === MLA (Humanities) ===
@@ -130,9 +129,17 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_legal(data):
+        # Case Name, Vol Rep Page (Court Year).
         citation = data.get('citation', '')
         case_name = f"<i>{data.get('case_name', '')}</i>"
-        court_year = f"({data.get('court', '')} {data.get('year', '')})".replace('  ', ' ')
+        
+        # LOGIC FIX: If citation contains 'U.S.', omit the court name.
+        court = data.get('court', '')
+        if 'U.S.' in citation or 'Supreme Court' in court: 
+            if 'U.S.' in citation: court = ''
+            
+        court_year = f"({court} {data.get('year', '')})".replace('  ', ' ').replace('()', '')
+        
         if citation: return f"{case_name}, {citation} {court_year}."
         return f"{case_name} {court_year}."
 
@@ -152,10 +159,7 @@ class CitationFormatter:
 
     @staticmethod
     def _chicago_interview(data):
-        # Target: Joh Brown, Interview by author, Dover, MA, May 7, 1918.
         parts = []
-        
-        # 1. Interviewee
         interviewee = data.get('interviewee', '')
         if interviewee:
             if ',' in interviewee:
@@ -163,18 +167,15 @@ class CitationFormatter:
                 interviewee = f"{names[1].strip()} {names[0].strip()}"
             parts.append(interviewee)
         
-        # 2. Descriptor
         interviewer = data.get('interviewer', '')
         if interviewer:
             parts.append(f"interview by {interviewer}")
         else:
             parts.append("interview by author")
             
-        # 3. Location
         if data.get('location'):
             parts.append(data.get('location'))
             
-        # 4. Date
         if data.get('date'):
             parts.append(data['date'])
             
@@ -184,11 +185,16 @@ class CitationFormatter:
 
     @staticmethod
     def _bluebook_legal(data):
+        # Case Name, Vol Rep Page (Court Year). 
         citation = data.get('citation', '')
         case_name = f"<i>{data.get('case_name', '')}</i>"
+        
+        # LOGIC FIX: Robust suppression of SCOTUS name
         court = data.get('court', '')
-        if 'U.S.' in citation and not court: court = '' 
+        if 'U.S.' in citation: court = '' 
+        
         parenthetical = f"({court} {data.get('year', '')})".replace('  ', ' ').replace('()', '')
+        
         if citation: return f"{case_name}, {citation} {parenthetical}."
         return f"{case_name} {parenthetical}."
 
@@ -297,18 +303,9 @@ class CitationFormatter:
     def _mla_generic(data):
         return f"{data.get('raw_source', '')}"
 
-
-# ==================== CRITICAL FIX FOR PRODUCTION ====================
-# This class was missing, causing the ImportError in app.py
+# ==================== LINK ACTIVATOR ====================
 class LinkActivator:
-    """
-    Placeholder class to satisfy the import in app.py.
-    This prevents the 'ImportError: cannot import name LinkActivator' crash.
-    """
     @staticmethod
     def process(filepath):
-        # Currently a stub to allow the server to boot.
-        # If you have the original complex XML logic for link activation,
-        # paste it here. For now, this safely does nothing but prevent the crash.
-        print(f"LinkActivator: Process called on {filepath}")
+        # Stub to prevent import errors in production
         return True
