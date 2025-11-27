@@ -1,13 +1,13 @@
 import os
 import zipfile
-import re
-import html  # <--- NEW: Handles &lt;i&gt; or other browser encodings
+import html
 import xml.etree.ElementTree as ET
+from bs4 import BeautifulSoup, NavigableString # Robust HTML parsing
 
 class WordDocumentProcessor:
     """
     Handles reading and writing to .docx files by treating them
-    as zipped XML directories.
+    as zipped XML directories. Uses BeautifulSoup for robust HTML-to-XML conversion.
     """
     
     NAMESPACES = {
@@ -61,27 +61,19 @@ class WordDocumentProcessor:
 
     def write_endnote(self, note_id, new_content):
         """
-        Updates the text of a specific endnote in the XML.
-        
-        CRITICAL UPDATES:
-        1. Unescapes HTML entities (fixes &lt;i&gt; issues).
-        2. Uses flexible regex to catch <I>, <i>, </I>, </i>.
+        Updates the endnote using BeautifulSoup to parse HTML tags (<i>, <em>)
+        and convert them to MS Word XML runs (<w:r><w:rPr><w:i/>...).
         """
         if not os.path.exists(self.endnotes_path):
             return False
 
         try:
-            # 1. Clean the input
-            # If the browser sent &lt;i&gt;, this turns it back into <i>
-            clean_content = html.unescape(new_content)
-
+            # 1. Setup XML Parsing
             ET.register_namespace('w', self.NAMESPACES['w'])
-            ET.register_namespace('xml', self.NAMESPACES['xml'])
-            
             tree = ET.parse(self.endnotes_path)
             root = tree.getroot()
             
-            # 2. Find the note
+            # 2. Find the target endnote
             target_note = None
             for endnote in root.findall('.//w:endnote', self.NAMESPACES):
                 if endnote.get(f"{{{self.NAMESPACES['w']}}}id") == str(note_id):
@@ -91,53 +83,59 @@ class WordDocumentProcessor:
             if target_note is None:
                 return False
 
-            # 3. Prepare the Paragraph
+            # 3. Clear existing paragraph content
             paragraph = target_note.find('.//w:p', self.NAMESPACES)
             if paragraph is None:
                 paragraph = ET.SubElement(target_note, f"{{{self.NAMESPACES['w']}}}p")
             else:
+                # Remove all children (runs) to start fresh
                 for child in list(paragraph):
                     paragraph.remove(child)
 
-            # 4. Robust Parsing (The Magic Fix)
-            # This regex matches:
-            # </?  -> Starts with < or </
-            # i    -> The letter i (case insensitive via flag)
-            # [^>]* -> Any attributes (like class="...")
-            # >    -> Closing bracket
-            parts = re.split(r'(</?i[^>]*>)', clean_content, flags=re.IGNORECASE)
+            # 4. ROBUST PARSING WITH BEAUTIFUL SOUP
+            # Unescape first to ensure < and > are real tags
+            clean_html = html.unescape(new_content)
+            soup = BeautifulSoup(clean_html, 'html.parser')
             
-            is_italic = False
-            
-            for part in parts:
-                # Normalize text for checking
-                lower_tag = part.lower().replace(' ', '')
-                
-                # Check start tag (matches <i>, <I>, <i class...>)
-                if lower_tag.startswith('<i'):
-                    is_italic = True
-                    continue
-                # Check end tag (matches </i>, </I>)
-                elif lower_tag.startswith('</i'):
-                    is_italic = False
-                    continue
-                
-                if not part: continue
-
-                # Create Run
+            # Helper to write a run to the paragraph
+            def write_run(text, italic=False, bold=False):
+                if not text: return
                 run = ET.SubElement(paragraph, f"{{{self.NAMESPACES['w']}}}r")
                 
-                # Apply Italic Style
-                if is_italic:
+                # Add properties (Italic/Bold)
+                if italic or bold:
                     rPr = ET.SubElement(run, f"{{{self.NAMESPACES['w']}}}rPr")
-                    ET.SubElement(rPr, f"{{{self.NAMESPACES['w']}}}i")
-                    
-                # Write Text
+                    if italic:
+                        ET.SubElement(rPr, f"{{{self.NAMESPACES['w']}}}i")
+                    if bold:
+                        ET.SubElement(rPr, f"{{{self.NAMESPACES['w']}}}b")
+                
+                # Add Text
                 text_node = ET.SubElement(run, f"{{{self.NAMESPACES['w']}}}t")
-                text_node.text = part
-                # Force Word to keep spaces
+                text_node.text = text
+                # Critical: preserve space so " v. " doesn't collapse
                 text_node.set(f"{{{self.NAMESPACES['xml']}}}space", "preserve")
 
+            # 5. Iterate through parsed nodes
+            # Note: This simple parser handles flat structures. 
+            # If you have nested tags (<b><i>text</i></b>), it treats the outer one as dominant
+            # or splits them. For citations, flat is usually sufficient.
+            
+            for element in soup.contents:
+                if isinstance(element, NavigableString):
+                    # It's just text
+                    write_run(str(element), italic=False)
+                elif element.name in ['i', 'em']:
+                    # It's Italic
+                    write_run(element.get_text(), italic=True)
+                elif element.name in ['b', 'strong']:
+                    # It's Bold
+                    write_run(element.get_text(), bold=True)
+                else:
+                    # Fallback for other tags (span, etc) - just write text
+                    write_run(element.get_text(), italic=False)
+
+            # 6. Save
             tree.write(self.endnotes_path, encoding='UTF-8', xml_declaration=True)
             return True
 
