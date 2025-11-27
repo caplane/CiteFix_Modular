@@ -117,20 +117,22 @@ class WordDocumentProcessor:
                 text_node.set(f"{{{self.NAMESPACES['xml']}}}space", "preserve")
 
             # 5. Iterate through parsed nodes
-            # This loops through the HTML (e.g., "<i>Brown</i> v. Board") 
-            # and writes each part with the correct formatting style.
+            # Note: This simple parser handles flat structures. 
+            # If you have nested tags (<b><i>text</i></b>), it treats the outer one as dominant
+            # or splits them. For citations, flat is usually sufficient.
+            
             for element in soup.contents:
                 if isinstance(element, NavigableString):
-                    # It's just text (v. Board)
+                    # It's just text
                     write_run(str(element), italic=False)
                 elif element.name in ['i', 'em']:
-                    # It's Italic (Brown)
+                    # It's Italic
                     write_run(element.get_text(), italic=True)
                 elif element.name in ['b', 'strong']:
                     # It's Bold
                     write_run(element.get_text(), bold=True)
                 else:
-                    # Fallback for other tags - just write text
+                    # Fallback for other tags (span, etc) - just write text
                     write_run(element.get_text(), italic=False)
 
             # 6. Save
