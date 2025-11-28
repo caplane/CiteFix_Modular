@@ -1,17 +1,19 @@
 """
-Legal Citation Engine (Production V13 - The "Spell Check" Edition)
+Legal Citation Engine (Production V14 - Zotero Integrated)
 Features:
 - Auto-Correct: Fixes typos ("Row v Wade" -> "Roe v Wade") using Fuzzy Matching.
 - Universal URL Logic: Reads any URL containing 'court', 'opinion', 'case'.
-- Layer 1: Massive Local Cache.
-- Layer 2: Stealth API.
+- Layer 1: Massive Local Cache (State, Federal, SCOTUS).
+- Layer 2: Zotero/Juris-M Personal Library (NEW).
+- Layer 3: Stealth API (CourtListener).
 """
 
 import requests
 import re
 import sys
 import time
-import difflib  # <--- NEW: Standard library for fuzzy matching
+import os
+import difflib
 from urllib.parse import urlparse, unquote
 
 # ==================== HELPER: AGGRESSIVE NORMALIZER ====================
@@ -21,29 +23,19 @@ def normalize_key(text):
     text = re.sub(r'\b(vs|versus)\b', 'v', text)
     return " ".join(text.split())
 
+# ==================== HELPER: DEBUG LOGGING ====================
+def debug_log(message):
+    print(f"[COURT.PY] {message}", file=sys.stderr, flush=True)
+
 # ==================== HELPER: FUZZY MATCHING (The Spell Checker) ====================
 def find_best_cache_match(text):
-    """
-    1. Tries exact normalized match.
-    2. If failed, tries Fuzzy Match (difflib) to catch typos.
-    Returns the valid Cache Key or None.
-    """
     clean_key = normalize_key(text)
-    
-    # 1. Exact Match
-    if clean_key in FAMOUS_CASES:
-        return clean_key
-        
-    # 2. Fuzzy Match (Auto-Correct)
-    # cutoff=0.8 means the text must be 80% similar to a known case.
-    # This prevents "Roe v Wade" from matching "Doe v Bolton".
+    if clean_key in FAMOUS_CASES: return clean_key
     matches = difflib.get_close_matches(clean_key, FAMOUS_CASES.keys(), n=1, cutoff=0.8)
-    
     if matches:
         suggestion = matches[0]
         debug_log(f"Auto-Corrected: '{text}' -> '{suggestion}'")
         return suggestion
-        
     return None
 
 # ==================== HELPER: SMART SLUG EXTRACTION ====================
@@ -61,7 +53,7 @@ def extract_query_from_url(url):
     except:
         return ""
 
-# ==================== LAYER 1: THE CACHE ====================
+# ==================== LAYER 1: THE MASSIVE CACHE ====================
 
 FAMOUS_CASES = {
     # --- ALIASES FOR URL MATCHING ---
@@ -147,17 +139,55 @@ FAMOUS_CASES = {
     'dc v heller': {'case_name': 'District of Columbia v. Heller', 'citation': '554 U.S. 570', 'year': '2008', 'court': 'Supreme Court of the United States'},
 }
 
-# ==================== DEBUG LOGGING ====================
-def debug_log(message):
-    print(f"[COURT.PY] {message}", file=sys.stderr, flush=True)
+# ==================== LAYER 2: ZOTERO / JURIS-M BRIDGE ====================
+class ZoteroBridge:
+    """
+    Connects to Zotero/Juris-M API to find personally curated cases.
+    Requires ZOTERO_USER_ID and ZOTERO_API_KEY env vars.
+    """
+    BASE_URL = "https://api.zotero.org"
+    
+    @staticmethod
+    def search(query):
+        user_id = os.environ.get('ZOTERO_USER_ID')
+        api_key = os.environ.get('ZOTERO_API_KEY')
+        
+        if not user_id or not api_key: return None
+            
+        try:
+            debug_log(f"Querying Zotero for: {query}")
+            url = f"{ZoteroBridge.BASE_URL}/users/{user_id}/items"
+            params = {'q': query, 'itemType': 'case', 'limit': 1, 'format': 'json'}
+            headers = {'Zotero-API-Key': api_key}
+            
+            response = requests.get(url, params=params, headers=headers, timeout=3)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data:
+                    item = data[0].get('data', {})
+                    citation = item.get('shortTitle') 
+                    if not citation:
+                        vol = item.get('volume', '')
+                        rep = item.get('reporter', '')
+                        page = item.get('firstPage', '')
+                        citation = f"{vol} {rep} {page}".strip()
+                        
+                    return {
+                        'caseName': item.get('caseName') or item.get('title'),
+                        'citation': citation,
+                        'court': item.get('court', ''),
+                        'dateFiled': item.get('dateDecided', '')
+                    }
+        except Exception as e:
+            debug_log(f"Zotero Error: {str(e)}")
+            pass 
+        return None
 
-# ==================== LAYER 2: THE STEALTH API ====================
+# ==================== LAYER 3: PUBLIC API ====================
 class CourtListenerAPI:
     BASE_URL = "https://www.courtlistener.com/api/rest/v3/search/"
-    HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    }
+    HEADERS = {'User-Agent': 'Mozilla/5.0'}
     
     @staticmethod
     def search(query):
@@ -168,18 +198,12 @@ class CourtListenerAPI:
                 CourtListenerAPI.BASE_URL, 
                 params={'q': query, 'type': 'o', 'order_by': 'score desc', 'format': 'json'}, 
                 headers=CourtListenerAPI.HEADERS, 
-                timeout=10
+                timeout=5
             )
             if response.status_code == 200:
                 results = response.json().get('results', [])
-                for result in results[:10]:
-                    citations = result.get('citation') or result.get('citations')
-                    case_name = result.get('caseName') or result.get('case_name')
-                    if citations:
-                        debug_log(f"API Match: {case_name}")
-                        return result
                 if results: return results[0]
-        except Exception: pass
+        except: pass
         return None
 
 # ==================== EXTRACTION LOGIC ====================
@@ -187,29 +211,26 @@ class CourtListenerAPI:
 KNOWN_LEGAL_DOMAINS = [
     'courtlistener.com', 'oyez.org', 'case.law', 'justia.com', 
     'supremecourt.gov', 'law.cornell.edu', 'nycourts.gov', 
-    'scholar.google.com', 'findlaw.com', 'leagle.com', 'casetext.com',
-    'masscases.com'
+    'scholar.google.com', 'findlaw.com', 'leagle.com', 'casetext.com'
 ]
 
 def is_legal_citation(text):
     if not text: return False
     clean = text.strip()
     
-    # 1. Check Cache (Exact + Fuzzy)
+    # 1. Check Cache
     if find_best_cache_match(clean): return True
 
     # 2. URL Patterns
     if 'http' in clean:
         if any(d in clean for d in KNOWN_LEGAL_DOMAINS): return True
         lower_url = clean.lower()
-        if any(w in lower_url for w in ['/opinion/', '/decision/', '/case/', '.gov/courts/', 'archive']):
+        if any(w in lower_url for w in ['/opinion/', '/decision/', '/case/', '.gov/courts/']):
             return True
 
     # 3. Text Patterns
     if re.search(r'\s(v|vs|versus)\.?\s', clean, re.IGNORECASE): return True
     if re.search(r'\b(in re|ex parte)\b', clean, re.IGNORECASE): return True
-    if re.search(r'\d+\s+[A-Za-z\.]+\s+\d+', clean): return True
-    
     return False
 
 def extract_metadata(text):
@@ -224,7 +245,7 @@ def extract_metadata(text):
         search_query = clean
         raw_for_api = re.sub(r'\b(vs|versus)\.?\b', 'v.', clean, flags=re.IGNORECASE)
 
-    # === LAYER 1: CACHE (Auto-Corrected) ===
+    # === LAYER 1: CACHE ===
     cache_key = find_best_cache_match(search_query)
     
     if cache_key:
@@ -240,7 +261,21 @@ def extract_metadata(text):
             'raw_source': text
         }
     
-    # === LAYER 2: API ===
+    # === LAYER 2: ZOTERO (Personal) ===
+    zotero_data = ZoteroBridge.search(raw_for_api)
+    if zotero_data:
+        debug_log(f"Zotero Hit: {zotero_data.get('caseName')}")
+        return {
+            'type': 'legal',
+            'case_name': zotero_data.get('caseName'),
+            'citation': zotero_data.get('citation'),
+            'court': zotero_data.get('court'),
+            'year': str(zotero_data.get('dateFiled', ''))[:4],
+            'url': clean if 'http' in clean else '',
+            'raw_source': text
+        }
+
+    # === LAYER 3: PUBLIC API ===
     metadata = {
         'type': 'legal', 'case_name': raw_for_api, 'citation': '', 
         'court': '', 'year': '', 'url': clean if 'http' in clean else '', 'raw_source': text
